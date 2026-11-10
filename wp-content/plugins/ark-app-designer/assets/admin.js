@@ -662,10 +662,30 @@ jQuery(function($){
   $preview.on('click','[data-delete]',function(){
     const id=$(this).data('delete');page().sections=sections().filter(s=>s.id!==id);state.selected=null;markDirty();render();
   });
+  function validateConfig(publish){
+    if(!state.config || typeof state.config!=='object') throw new Error('Designer configuration is empty.');
+    if(!state.config.app || !String(state.config.app.name||'').trim()) throw new Error('Enter an App display name in App Identity.');
+    const allowed=new Set(Object.keys(ARKDesigner.components||{}));
+    for(const [pageKey,pageData] of Object.entries(state.config.pages||{})){
+      if(!pageData || !Array.isArray(pageData.sections)) throw new Error('Page '+pageKey+' has an invalid component list.');
+      pageData.sections.forEach((section,index)=>{
+        if(!section || !allowed.has(section.type)) throw new Error('Unknown component on '+pageKey+' at position '+(index+1)+'.');
+        if(section.type==='banner_slider' && publish){
+          const slides=Array.isArray(section.items)?section.items:[];
+          if(!slides.length) throw new Error('Add at least one image to every Image Slider before publishing.');
+          slides.forEach((slide,i)=>{
+            if(!slide || !/^https?:\\/\\//i.test(String(slide.image_url||''))) throw new Error('Image Slider on '+pageKey+' needs a valid image URL for slide '+(i+1)+'.');
+          });
+        }
+      });
+    }
+    return true;
+  }
   function save(publish){
+    try{validateConfig(publish);}catch(error){toast(error.message,true);return;}
     const button=publish?$('#ark-publish'):$('#ark-save-draft');button.prop('disabled',true).text('Saving…');
     request(publish?'studio/publish':'studio/draft','POST',state.config).then(result=>{
-      state.config.version=result.version||state.config.version;state.dirty=false;
+      state.config.version=result.version||state.config.version;state.config.updated_at=result.updated_at||state.config.updated_at;state.dirty=false;
       $('#ark-version-label').text(publish?'Published v'+state.config.version:'Draft saved');
       toast(publish?'Published to all supported app clients.':'Draft saved.');
     }).catch(e=>toast(e.message,true)).finally(()=>button.prop('disabled',false).text(publish?'Publish changes ↗':'Save draft'));
@@ -673,5 +693,6 @@ jQuery(function($){
   $('#ark-save-draft').on('click',()=>save(false));
   $('#ark-publish').on('click',()=>save(true));
   $('#ark-preview-refresh').on('click',renderPreview);
+  $('#ark-version-label').text('Published v'+(state.config.version||1)+' · Draft editor');
   renderComponents();render();loadLivePreview();
 });
