@@ -376,7 +376,9 @@ final class ARK_App_Designer {
                     if (isset($section[$layout_key])) $item[$layout_key] = min($range[1], max($range[0], (float) $section[$layout_key]));
                 }
                 $item['alignment'] = in_array(($section['alignment'] ?? 'stretch'), ['stretch','left','center','right'], true) ? ($section['alignment'] ?? 'stretch') : 'stretch';
-                unset($item['entrance_animation'], $item['card_animation']);
+                $item['entrance_animation'] = in_array(($section['entrance_animation'] ?? 'none'), ['none','fade','slide','zoom'], true)
+                    ? ($section['entrance_animation'] ?? 'none') : 'none';
+                unset($item['card_animation']);
                 $item['background_motion'] = in_array(($section['background_motion'] ?? 'none'), ['none','pulse','gradient','shimmer','glow'], true) ? ($section['background_motion'] ?? 'none') : 'none';
                 if (isset($section['card_design'])) $item['card_design'] = in_array($section['card_design'], ['flipkart','classic','elevated','glass','compact','minimal'], true) ? $section['card_design'] : 'flipkart';
                 if ($type === 'address_selector') {
@@ -468,8 +470,33 @@ final class ARK_App_Designer {
         }, array_filter((array) ($navigation['items'] ?? []), 'is_array')));
 
         $clean['navigation'] = $navigation;
+        // Preserve every App Identity field. Previously this whitelist kept only
+        // name/tagline/icon_url, silently discarding logo and splash settings on publish.
         $app = is_array($clean['app'] ?? null) ? $clean['app'] : [];
-        $clean['app'] = ['name' => sanitize_text_field($app['name'] ?? 'GlowHit'), 'tagline' => sanitize_text_field($app['tagline'] ?? ''), 'icon_url' => $this->clean_url($app['icon_url'] ?? '')];
+        $splash_image_url = $this->clean_url($app['splash_image_url'] ?? ($splash['image_url'] ?? ''));
+        $splash_background = sanitize_hex_color($app['splash_background'] ?? ($splash['background'] ?? '')) ?: $base['splash']['background'];
+        $splash_fit = in_array(($app['splash_fit'] ?? ($splash['fit'] ?? 'contain')), ['contain','cover','fill'], true)
+            ? ($app['splash_fit'] ?? ($splash['fit'] ?? 'contain')) : 'contain';
+        $splash_duration = min(8000, max(500, absint($app['splash_duration_ms'] ?? ($splash['duration_ms'] ?? 1800))));
+        $splash_enabled = array_key_exists('splash_enabled', $app)
+            ? (bool) $app['splash_enabled'] : (bool) ($splash['enabled'] ?? true);
+        $clean['app'] = [
+            'name' => sanitize_text_field($app['name'] ?? 'GlowHit'),
+            'tagline' => sanitize_text_field($app['tagline'] ?? ''),
+            'icon_url' => $this->clean_url($app['icon_url'] ?? ''),
+            'logo_url' => $this->clean_url($app['logo_url'] ?? ''),
+            'splash_image_url' => $splash_image_url,
+            'splash_enabled' => $splash_enabled,
+            'splash_duration_ms' => $splash_duration,
+            'splash_fit' => $splash_fit,
+            'splash_background' => $splash_background,
+        ];
+        // Keep legacy splash fields in sync for older app builds and clients.
+        $clean['splash']['image_url'] = $splash_image_url;
+        $clean['splash']['enabled'] = $splash_enabled;
+        $clean['splash']['duration_ms'] = $splash_duration;
+        $clean['splash']['fit'] = $splash_fit;
+        $clean['splash']['background'] = $splash_background;
         return $clean;
     }
 
