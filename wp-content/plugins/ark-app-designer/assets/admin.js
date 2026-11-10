@@ -2,7 +2,7 @@ jQuery(function($){
   const state={config:ARKDesigner.config||{},page:'home',selected:null,view:'page',dirty:false};
   const liveCache={categories:null,products:null,targets:null,loading:false};
   const $pages=$('#ark-pages'),$components=$('#ark-components'),$preview=$('#ark-preview'),$inspector=$('#ark-inspector-content');
-  const labels={home:'Home page',categories:'Categories page',product:'Product page',account:'Account page'};
+  const labels={home:'Home page',categories:'Categories page',wishlist:'Wishlist page',product:'Product page',account:'Account page'};
   const collapseState={left:false,right:false};
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const page=()=>state.config.pages[state.page]||(state.config.pages[state.page]={title:labels[state.page],sections:[]});
