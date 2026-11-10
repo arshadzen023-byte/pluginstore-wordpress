@@ -113,6 +113,9 @@ final class ARK_App_Designer {
                     ['id' => 'account-profile', 'type' => 'account_profile', 'visible' => true, 'title' => 'Your account'],
                     ['id' => 'account-orders', 'type' => 'account_menu', 'visible' => true, 'title' => 'Account options'],
                 ]],
+                'wishlist' => ['title' => 'Wishlist', 'sections' => [
+                    ['id' => 'wishlist-products', 'type' => 'product_grid', 'visible' => true, 'title' => 'Saved products', 'source' => 'wishlist', 'limit' => 50, 'columns' => 2],
+                ]],
             ],
         ];
     }
@@ -350,7 +353,7 @@ final class ARK_App_Designer {
         $clean['celebration'] = $celebration;
 
         $pages = is_array($clean['pages'] ?? null) ? $clean['pages'] : [];
-        $allowed_pages = ['home','categories','product','account'];
+        $allowed_pages = ['home','categories','product','account','wishlist'];
         foreach ($allowed_pages as $page_key) {
             $page = is_array($pages[$page_key] ?? null) ? $pages[$page_key] : $base['pages'][$page_key];
             $sections = is_array($page['sections'] ?? null) ? array_slice($page['sections'], 0, 50) : [];
