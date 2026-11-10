@@ -674,7 +674,7 @@ jQuery(function($){
           const slides=Array.isArray(section.items)?section.items:[];
           if(!slides.length) throw new Error('Add at least one image to every Image Slider before publishing.');
           slides.forEach((slide,i)=>{
-            if(!slide || !/^https?:\\/\\//i.test(String(slide.image_url||''))) throw new Error('Image Slider on '+pageKey+' needs a valid image URL for slide '+(i+1)+'.');
+            if(!slide || !/^https?:\/\//i.test(String(slide.image_url||''))) throw new Error('Image Slider on '+pageKey+' needs a valid image URL for slide '+(i+1)+'.');
           });
         }
       });
