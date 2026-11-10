@@ -187,7 +187,7 @@ jQuery(function($){
       markDirty();renderPreview();
     });
     wrap.append(input);
-    if(type==='url'&&['image_url','logo_url','icon_url'].includes(key)){
+    if(type==='url'&&['image_url','logo_url','icon_url','splash_image_url'].includes(key)){
       const media=$('<button type="button" class="ark-media-pick">Choose from Media Library</button>');
       media.on('click',function(e){
         e.preventDefault();
@@ -277,8 +277,15 @@ jQuery(function($){
       const app=state.config.app||(state.config.app={});
       $inspector.append(field('App display name','name',app.name||'GlowHit'));
       $inspector.append(field('App tagline','tagline',app.tagline||''));
-      $inspector.append(field('Live app icon URL','icon_url',app.icon_url||'','url','Select an image from Media Library. This updates the in-app header icon on installed builds that support the live designer. Android launcher icons remain bundled in the APK.'));
-      $('<p class="description">This changes the in-app title and supported app labels; it does not change the Android launcher package name.</p>').appendTo($inspector);
+      $inspector.append(field('App display name','name',app.name||'GlowHit'));
+      $inspector.append(field('App icon (in-app header)','icon_url',app.icon_url||'','url','Updates the icon shown inside the installed app after its next design sync. Android launcher icon still requires an APK update.'));
+      $inspector.append(field('App logo','logo_url',app.logo_url||'','url','Select the logo used by supported app branding and splash fallback.'));
+      $inspector.append(field('Splash screen image','splash_image_url',app.splash_image_url||state.config.splash?.image_url||'','url','Full-screen splash image. Choose from WordPress Media Library.'));
+      $inspector.append(field('Enable splash screen','splash_enabled',app.splash_enabled!==false,'checkbox'));
+      $inspector.append(field('Splash duration (ms)','splash_duration_ms',app.splash_duration_ms||1800,'number'));
+      $inspector.append(choiceField('Splash image fit','splash_fit',app.splash_fit||'contain',[['contain','Contain'],['cover','Cover'],['fill','Fill']]));
+      $inspector.append(field('Splash background','splash_background',app.splash_background||'#F5F7FB','color'));
+      $('<p class="description">All app identity and splash settings are managed here. Publish changes to update supported installed app builds on their next sync. Android launcher icon changes require a new APK.</p>').appendTo($inspector);
       return;
     }
     if(state.view==='theme'){
