@@ -39,4 +39,3 @@ LIGHTWEIGHT / PERFORMANCE
 SECURITY
 - This theme does not include or modify Elementor Pro plugin files. Install plugins only
   from their official source and keep WordPress, WooCommerce and plugins updated.
-Hello 
