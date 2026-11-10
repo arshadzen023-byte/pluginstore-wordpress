@@ -376,7 +376,9 @@ final class ARK_App_Designer {
                     if (isset($section[$layout_key])) $item[$layout_key] = min($range[1], max($range[0], (float) $section[$layout_key]));
                 }
                 $item['alignment'] = in_array(($section['alignment'] ?? 'stretch'), ['stretch','left','center','right'], true) ? ($section['alignment'] ?? 'stretch') : 'stretch';
-                unset($item['entrance_animation'], $item['card_animation']);
+                $item['entrance_animation'] = in_array(($section['entrance_animation'] ?? 'none'), ['none','fade','slide','zoom'], true)
+                    ? ($section['entrance_animation'] ?? 'none') : 'none';
+                unset($item['card_animation']);
                 $item['background_motion'] = in_array(($section['background_motion'] ?? 'none'), ['none','pulse','gradient','shimmer','glow'], true) ? ($section['background_motion'] ?? 'none') : 'none';
                 if (isset($section['card_design'])) $item['card_design'] = in_array($section['card_design'], ['flipkart','classic','elevated','glass','compact','minimal'], true) ? $section['card_design'] : 'flipkart';
                 if ($type === 'address_selector') {
