@@ -209,7 +209,11 @@ jQuery(function($){
     const select=$('<select></select>').attr('data-field',key);
     options.forEach(([v,l])=>select.append($('<option></option>').val(v).text(l)));
     select.val(value??options[0]?.[0]??'').on('change',function(){
-      const target=selected();if(!target)return;
+      let target=selected();
+      if(state.view==='app') target=state.config.app||(state.config.app={});
+      if(state.view==='theme') target=state.config.theme||(state.config.theme={});
+      if(state.view==='splash') target=state.config.splash||(state.config.splash={});
+      if(!target)return;
       target[key]=$(this).val();markDirty();renderPreview();
     });
     wrap.append(select);
