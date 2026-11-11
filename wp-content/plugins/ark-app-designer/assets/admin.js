@@ -295,13 +295,14 @@ jQuery(function($){
     if(state.view==='theme'){
       $('#ark-inspector-title').text('Theme & colours');
       const t=state.config.theme||(state.config.theme={});
+      const productColorDefaults={cart_button_background:'#FFFFFF',cart_button_text:'#496292',buy_button_background:'#FFD814',buy_button_text:'#202733',buy_button_price:'#202733'};
       [['Primary','primary'],['Accent','accent'],['Background','background'],['Surface','surface'],['Text','text'],
        ['Top header background','header_background'],['Top header text / icons','header_text'],
        ['Bottom navigation background','navigation_background'],['Bottom selected icon background','navigation_indicator'],
        ['Add to Cart background','cart_button_background'],['Add to Cart text / icon','cart_button_text'],
        ['Buy Now background','buy_button_background'],['Buy Now text','buy_button_text'],['Buy Now price text','buy_button_price']
       ].forEach(([label,key])=>{
-        const wrap=field(label,key,t[key]||'#ffffff','color');wrap.find('input').on('input',e=>{t[key]=e.target.value;markDirty();});
+        const wrap=field(label,key,t[key]||productColorDefaults[key]||'#ffffff','color');wrap.find('input').on('input',e=>{t[key]=e.target.value;markDirty();});
         $inspector.append(wrap);
       });
       const headerMotion=$('<div class="ark-field"><label>Header colour animation</label><select><option value="none">Smooth colour transition</option><option value="gradient">Animated gradient style</option><option value="pulse">Soft pulse</option></select></div>');
