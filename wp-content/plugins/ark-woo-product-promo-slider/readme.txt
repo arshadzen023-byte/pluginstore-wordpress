@@ -1,5 +1,5 @@
 ARK Woo Product Promo Slider
-Version 1.1.1
+Version 1.1.2
 
 INSTALL
 1. WordPress Admin > Plugins > Add New Plugin > Upload Plugin.
