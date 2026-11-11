@@ -297,7 +297,9 @@ jQuery(function($){
       const t=state.config.theme||(state.config.theme={});
       [['Primary','primary'],['Accent','accent'],['Background','background'],['Surface','surface'],['Text','text'],
        ['Top header background','header_background'],['Top header text / icons','header_text'],
-       ['Bottom navigation background','navigation_background'],['Bottom selected icon background','navigation_indicator']
+       ['Bottom navigation background','navigation_background'],['Bottom selected icon background','navigation_indicator'],
+       ['Add to Cart background','cart_button_background'],['Add to Cart text / icon','cart_button_text'],
+       ['Buy Now background','buy_button_background'],['Buy Now text','buy_button_text'],['Buy Now price text','buy_button_price']
       ].forEach(([label,key])=>{
         const wrap=field(label,key,t[key]||'#ffffff','color');wrap.find('input').on('input',e=>{t[key]=e.target.value;markDirty();});
         $inspector.append(wrap);
