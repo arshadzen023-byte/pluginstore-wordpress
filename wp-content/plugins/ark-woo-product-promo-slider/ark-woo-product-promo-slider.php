@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK Woo Product Promo Slider
  * Description: Responsive, product/category-targeted sponsored product slider for WooCommerce product pages.
- * Version: 1.1.1
+ * Version: 1.1.2
  * Author: ARK
  * Requires at least: 6.0
  * Requires PHP: 7.4
@@ -14,7 +14,7 @@ defined('ABSPATH') || exit;
 
 if (!class_exists('ARK_Woo_Product_Promo_Slider')) {
     final class ARK_Woo_Product_Promo_Slider {
-        const VERSION = '1.1.1';
+        const VERSION = '1.1.2';
         const CPT = 'ark_promo_campaign';
         const NONCE = 'ark_promo_save_campaign';
 
@@ -25,6 +25,7 @@ if (!class_exists('ARK_Woo_Product_Promo_Slider')) {
             add_action('admin_enqueue_scripts', [$this, 'admin_assets']);
             add_action('wp_enqueue_scripts', [$this, 'frontend_assets']);
             add_action('wp_footer', [$this, 'render_slider'], 2);
+            add_filter('ark_native_product_promos', [$this, 'native_campaigns_for_product'], 10, 2);
             add_action('wp_ajax_ark_promo_search_products', [$this, 'ajax_search_products']);
         }
 
@@ -380,6 +381,63 @@ if (!class_exists('ARK_Woo_Product_Promo_Slider')) {
             }
 
             return in_array((int) $product_id, $promo_products, true);
+        }
+
+        /**
+         * Expose the same configured campaigns to the ARK Native App API bridge.
+         * The bridge applies this filter to its product-data response, so the
+         * app and the WooCommerce product page use one campaign targeting rule.
+         */
+        public function native_campaigns_for_product($existing, $product_id) {
+            if (!function_exists('wc_get_product')) return is_array($existing) ? $existing : [];
+            $product_id = absint($product_id);
+            $product = wc_get_product($product_id);
+            if (!$product || $product->get_status() !== 'publish') return [];
+
+            $campaigns = get_posts([
+                'post_type' => self::CPT,
+                'post_status' => 'publish',
+                'posts_per_page' => 20,
+                'orderby' => ['menu_order' => 'ASC', 'date' => 'DESC'],
+                'no_found_rows' => true,
+                'meta_query' => [['key' => '_ark_promo_enabled', 'value' => '1']],
+            ]);
+            $result = [];
+            foreach ($campaigns as $campaign) {
+                if (!$this->campaign_matches($campaign->ID, $product_id)) continue;
+                $ids = array_map('absint', (array) get_post_meta($campaign->ID, '_ark_promo_products', true));
+                $limit = max(1, min(20, absint(get_post_meta($campaign->ID, '_ark_promo_limit', true) ?: 8)));
+                $cards = [];
+                foreach (array_slice(array_unique($ids), 0, 100) as $promo_id) {
+                    if ($promo_id === $product_id) continue;
+                    $promo = wc_get_product($promo_id);
+                    if (!$promo || $promo->get_status() !== 'publish' || (method_exists($promo, 'is_visible') && !$promo->is_visible())) continue;
+                    $regular = (float) $promo->get_regular_price();
+                    $sale = (float) $promo->get_price();
+                    $discount = ($regular > 0 && $sale > 0 && $sale < $regular)
+                        ? (int) round((($regular - $sale) / $regular) * 100) : 0;
+                    $cards[] = [
+                        'id' => (int) $promo->get_id(),
+                        'name' => wp_strip_all_tags($promo->get_name()),
+                        'image' => wp_get_attachment_image_url($promo->get_image_id(), 'woocommerce_thumbnail') ?: '',
+                        'permalink' => get_permalink($promo->get_id()),
+                        'regular_price' => (string) $regular,
+                        'sale_price' => (string) $sale,
+                        'price_html' => trim(html_entity_decode(wp_strip_all_tags($promo->get_price_html()), ENT_QUOTES, 'UTF-8')),
+                        'discount_percent' => $discount,
+                    ];
+                    if (count($cards) >= $limit) break;
+                }
+                if ($cards) {
+                    $result[] = [
+                        'campaign_id' => (int) $campaign->ID,
+                        'heading' => sanitize_text_field(get_post_meta($campaign->ID, '_ark_promo_heading', true) ?: 'Recommended offers'),
+                        'speed' => max(0, min(15000, absint(get_post_meta($campaign->ID, '_ark_promo_speed', true) ?: 0))),
+                        'products' => $cards,
+                    ];
+                }
+            }
+            return $result;
         }
 
         public function frontend_assets() {
