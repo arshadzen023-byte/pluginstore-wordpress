@@ -31,8 +31,8 @@ jobs:
         run: |
           mkdir -p dist
           cd wp-content/plugins
-          zip -r ../../../dist/ark-app-designer-1.7.2.zip ark-app-designer
-          zip -r ../../../dist/ark-woo-product-promo-slider-1.1.2.zip ark-woo-product-promo-slider
+          zip -r ../../dist/ark-app-designer-1.7.2.zip ark-app-designer
+          zip -r ../../dist/ark-woo-product-promo-slider-1.1.2.zip ark-woo-product-promo-slider
       - name: Save updated plugin ZIPs
         uses: actions/upload-artifact@v4
         with:
