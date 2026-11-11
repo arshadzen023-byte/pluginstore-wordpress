@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Designer
  * Description: Server-driven visual app designer for ARK Native / GlowHit Flutter apps, including live layout, navigation, theme and in-app splash configuration.
- * Version: 1.6.3
+ * Version: 1.7.0
  * Author: ARK
  * Requires PHP: 7.4
  */
@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class ARK_App_Designer {
-    const VERSION = '1.6.3';
+    const VERSION = '1.7.0';
     const PUBLISHED = 'ark_app_designer_published';
     const DRAFT = 'ark_app_designer_draft';
     const REVISIONS = 'ark_app_designer_revisions';
@@ -40,7 +40,7 @@ final class ARK_App_Designer {
             'schema_version' => 1,
             'version' => 1,
             'updated_at' => gmdate('c'),
-            'app' => ['name' => 'GlowHit', 'tagline' => 'Shop smarter', 'icon_url' => ''],
+            'app' => ['name' => 'GlowHit', 'tagline' => 'Shop smarter', 'icon_url' => '', 'logo_url' => '', 'splash_image_url' => '', 'splash_enabled' => true, 'splash_duration_ms' => 1800, 'splash_fit' => 'contain', 'splash_background' => '#F5F7FB'],
             
             'theme' => [
                 'primary' => '#2874F0',
@@ -112,6 +112,9 @@ final class ARK_App_Designer {
                 'account' => ['title' => 'Account', 'sections' => [
                     ['id' => 'account-profile', 'type' => 'account_profile', 'visible' => true, 'title' => 'Your account'],
                     ['id' => 'account-orders', 'type' => 'account_menu', 'visible' => true, 'title' => 'Account options'],
+                ]],
+                'wishlist' => ['title' => 'Wishlist', 'sections' => [
+                    ['id' => 'wishlist-products', 'type' => 'product_grid', 'visible' => true, 'title' => 'Saved products', 'source' => 'wishlist', 'limit' => 50, 'columns' => 2],
                 ]],
             ],
         ];
@@ -350,7 +353,7 @@ final class ARK_App_Designer {
         $clean['celebration'] = $celebration;
 
         $pages = is_array($clean['pages'] ?? null) ? $clean['pages'] : [];
-        $allowed_pages = ['home','categories','product','account'];
+        $allowed_pages = ['home','categories','product','account','wishlist'];
         foreach ($allowed_pages as $page_key) {
             $page = is_array($pages[$page_key] ?? null) ? $pages[$page_key] : $base['pages'][$page_key];
             $sections = is_array($page['sections'] ?? null) ? array_slice($page['sections'], 0, 50) : [];
@@ -373,7 +376,9 @@ final class ARK_App_Designer {
                     if (isset($section[$layout_key])) $item[$layout_key] = min($range[1], max($range[0], (float) $section[$layout_key]));
                 }
                 $item['alignment'] = in_array(($section['alignment'] ?? 'stretch'), ['stretch','left','center','right'], true) ? ($section['alignment'] ?? 'stretch') : 'stretch';
-                unset($item['entrance_animation'], $item['card_animation']);
+                $item['entrance_animation'] = in_array(($section['entrance_animation'] ?? 'none'), ['none','fade','slide','zoom'], true)
+                    ? ($section['entrance_animation'] ?? 'none') : 'none';
+                unset($item['card_animation']);
                 $item['background_motion'] = in_array(($section['background_motion'] ?? 'none'), ['none','pulse','gradient','shimmer','glow'], true) ? ($section['background_motion'] ?? 'none') : 'none';
                 if (isset($section['card_design'])) $item['card_design'] = in_array($section['card_design'], ['flipkart','classic','elevated','glass','compact','minimal'], true) ? $section['card_design'] : 'flipkart';
                 if ($type === 'address_selector') {
@@ -465,8 +470,33 @@ final class ARK_App_Designer {
         }, array_filter((array) ($navigation['items'] ?? []), 'is_array')));
 
         $clean['navigation'] = $navigation;
+        // Preserve every App Identity field. Previously this whitelist kept only
+        // name/tagline/icon_url, silently discarding logo and splash settings on publish.
         $app = is_array($clean['app'] ?? null) ? $clean['app'] : [];
-        $clean['app'] = ['name' => sanitize_text_field($app['name'] ?? 'GlowHit'), 'tagline' => sanitize_text_field($app['tagline'] ?? ''), 'icon_url' => $this->clean_url($app['icon_url'] ?? '')];
+        $splash_image_url = $this->clean_url($app['splash_image_url'] ?? ($splash['image_url'] ?? ''));
+        $splash_background = sanitize_hex_color($app['splash_background'] ?? ($splash['background'] ?? '')) ?: $base['splash']['background'];
+        $splash_fit = in_array(($app['splash_fit'] ?? ($splash['fit'] ?? 'contain')), ['contain','cover','fill'], true)
+            ? ($app['splash_fit'] ?? ($splash['fit'] ?? 'contain')) : 'contain';
+        $splash_duration = min(8000, max(500, absint($app['splash_duration_ms'] ?? ($splash['duration_ms'] ?? 1800))));
+        $splash_enabled = array_key_exists('splash_enabled', $app)
+            ? (bool) $app['splash_enabled'] : (bool) ($splash['enabled'] ?? true);
+        $clean['app'] = [
+            'name' => sanitize_text_field($app['name'] ?? 'GlowHit'),
+            'tagline' => sanitize_text_field($app['tagline'] ?? ''),
+            'icon_url' => $this->clean_url($app['icon_url'] ?? ''),
+            'logo_url' => $this->clean_url($app['logo_url'] ?? ''),
+            'splash_image_url' => $splash_image_url,
+            'splash_enabled' => $splash_enabled,
+            'splash_duration_ms' => $splash_duration,
+            'splash_fit' => $splash_fit,
+            'splash_background' => $splash_background,
+        ];
+        // Keep legacy splash fields in sync for older app builds and clients.
+        $clean['splash']['image_url'] = $splash_image_url;
+        $clean['splash']['enabled'] = $splash_enabled;
+        $clean['splash']['duration_ms'] = $splash_duration;
+        $clean['splash']['fit'] = $splash_fit;
+        $clean['splash']['background'] = $splash_background;
         return $clean;
     }
 
@@ -658,7 +688,7 @@ final class ARK_App_Designer {
         echo '<div class="wrap ark-designer-wrap"><div class="ark-designer-app">';
         echo '<header class="ark-topbar"><div class="ark-brand"><span class="ark-brand-mark">A</span><div><strong>ARK App Designer</strong><small>Visual studio for GlowHit</small></div></div>';
         echo '<div class="ark-top-actions"><span class="ark-status"><i></i> Connected to WordPress</span><button class="ark-btn ark-btn-ghost" id="ark-save-draft">Save draft</button><button class="ark-btn ark-btn-publish" id="ark-publish">Publish changes ↗</button></div></header>';
-        echo '<main class="ark-workspace"><aside class="ark-sidebar"><button type="button" class="ark-panel-toggle" id="ark-toggle-left" aria-label="Collapse components panel">☰ Components</button><div class="ark-sidebar-title">BUILD YOUR APP</div><div class="ark-page-list" id="ark-pages"></div><div class="ark-sidebar-divider"></div><div class="ark-sidebar-title">ADD COMPONENT</div><div class="ark-component-list" id="ark-components"></div><div class="ark-sidebar-divider"></div><button class="ark-quick-link" data-view="app">✎ App name & identity</button><button class="ark-quick-link" data-view="theme">◈ Theme & colours</button><button class="ark-quick-link" data-view="splash">✦ Splash screen</button><button class="ark-quick-link" data-view="celebration">✧ Crackers animation</button><button class="ark-quick-link" data-view="navigation">☷ Navigation</button><button class="ark-quick-link" data-view="source">⌘ App source files</button></aside>';
+        echo '<main class="ark-workspace"><aside class="ark-sidebar"><button type="button" class="ark-panel-toggle" id="ark-toggle-left" aria-label="Collapse components panel">☰ Components</button><div class="ark-sidebar-title">BUILD YOUR APP</div><div class="ark-page-list" id="ark-pages"></div><div class="ark-sidebar-divider"></div><div class="ark-sidebar-title">ADD COMPONENT</div><div class="ark-component-list" id="ark-components"></div><div class="ark-sidebar-divider"></div><button class="ark-quick-link" data-view="app">✎ App name & identity</button><button class="ark-quick-link" data-view="theme">◈ Theme & colours</button><button class="ark-quick-link" data-view="celebration">✧ Crackers animation</button><button class="ark-quick-link" data-view="navigation">☷ Navigation</button><button class="ark-quick-link" data-view="source">⌘ App source files</button></aside>';
         echo '<section class="ark-canvas-area"><div class="ark-canvas-toolbar"><div><strong id="ark-canvas-title">Home page</strong><span id="ark-canvas-subtitle">Drag sections or use the arrows to change order</span></div><div class="ark-canvas-tools"><span class="ark-live-pill">● LIVE PREVIEW</span><button class="ark-icon-btn" id="ark-preview-refresh" title="Refresh preview">↻</button></div></div>';
         echo '<div class="ark-canvas-scroll"><div class="ark-phone"><div class="ark-phone-status"><span>9:41</span><span>● ● ▰</span></div><div class="ark-phone-screen" id="ark-preview"></div><div class="ark-phone-nav"><span>⌂</span><span>▦</span><span>♡</span><span>♙</span></div></div></div></section>';
         echo '<aside class="ark-inspector"><div class="ark-inspector-head"><button type="button" class="ark-panel-toggle" id="ark-toggle-right" aria-label="Collapse properties panel">⚙ Properties</button><span>PROPERTIES</span><strong id="ark-inspector-title">Select a section</strong></div><div id="ark-inspector-content" class="ark-inspector-content"><div class="ark-empty-inspector">Choose a component from the canvas to edit its settings.</div></div></aside></main>';

@@ -2,7 +2,7 @@ jQuery(function($){
   const state={config:ARKDesigner.config||{},page:'home',selected:null,view:'page',dirty:false};
   const liveCache={categories:null,products:null,targets:null,loading:false};
   const $pages=$('#ark-pages'),$components=$('#ark-components'),$preview=$('#ark-preview'),$inspector=$('#ark-inspector-content');
-  const labels={home:'Home page',categories:'Categories page',product:'Product page',account:'Account page'};
+  const labels={home:'Home page',categories:'Categories page',wishlist:'Wishlist page',product:'Product page',account:'Account page'};
   const collapseState={left:false,right:false};
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const page=()=>state.config.pages[state.page]||(state.config.pages[state.page]={title:labels[state.page],sections:[]});
@@ -187,7 +187,7 @@ jQuery(function($){
       markDirty();renderPreview();
     });
     wrap.append(input);
-    if(type==='url'&&['image_url','logo_url','icon_url'].includes(key)){
+    if(type==='url'&&['image_url','logo_url','icon_url','splash_image_url'].includes(key)){
       const media=$('<button type="button" class="ark-media-pick">Choose from Media Library</button>');
       media.on('click',function(e){
         e.preventDefault();
@@ -209,7 +209,11 @@ jQuery(function($){
     const select=$('<select></select>').attr('data-field',key);
     options.forEach(([v,l])=>select.append($('<option></option>').val(v).text(l)));
     select.val(value??options[0]?.[0]??'').on('change',function(){
-      const target=selected();if(!target)return;
+      let target=selected();
+      if(state.view==='app') target=state.config.app||(state.config.app={});
+      if(state.view==='theme') target=state.config.theme||(state.config.theme={});
+      if(state.view==='splash') target=state.config.splash||(state.config.splash={});
+      if(!target)return;
       target[key]=$(this).val();markDirty();renderPreview();
     });
     wrap.append(select);
@@ -277,8 +281,15 @@ jQuery(function($){
       const app=state.config.app||(state.config.app={});
       $inspector.append(field('App display name','name',app.name||'GlowHit'));
       $inspector.append(field('App tagline','tagline',app.tagline||''));
-      $inspector.append(field('Live app icon URL','icon_url',app.icon_url||'','url','Select an image from Media Library. This updates the in-app header icon on installed builds that support the live designer. Android launcher icons remain bundled in the APK.'));
-      $('<p class="description">This changes the in-app title and supported app labels; it does not change the Android launcher package name.</p>').appendTo($inspector);
+      $inspector.append(field('App display name','name',app.name||'GlowHit'));
+      $inspector.append(field('App icon (in-app header)','icon_url',app.icon_url||'','url','Updates the icon shown inside the installed app after its next design sync. Android launcher icon still requires an APK update.'));
+      $inspector.append(field('App logo','logo_url',app.logo_url||'','url','Select the logo used by supported app branding and splash fallback.'));
+      $inspector.append(field('Splash screen image','splash_image_url',app.splash_image_url||state.config.splash?.image_url||'','url','Full-screen splash image. Choose from WordPress Media Library.'));
+      $inspector.append(field('Enable splash screen','splash_enabled',app.splash_enabled!==false,'checkbox'));
+      $inspector.append(field('Splash duration (ms)','splash_duration_ms',app.splash_duration_ms||1800,'number'));
+      $inspector.append(choiceField('Splash image fit','splash_fit',app.splash_fit||'contain',[['contain','Contain'],['cover','Cover'],['fill','Fill']]));
+      $inspector.append(field('Splash background','splash_background',app.splash_background||'#F5F7FB','color'));
+      $('<p class="description">All app identity and splash settings are managed here. Publish changes to update supported installed app builds on their next sync. Android launcher icon changes require a new APK.</p>').appendTo($inspector);
       return;
     }
     if(state.view==='theme'){
@@ -651,10 +662,30 @@ jQuery(function($){
   $preview.on('click','[data-delete]',function(){
     const id=$(this).data('delete');page().sections=sections().filter(s=>s.id!==id);state.selected=null;markDirty();render();
   });
+  function validateConfig(publish){
+    if(!state.config || typeof state.config!=='object') throw new Error('Designer configuration is empty.');
+    if(!state.config.app || !String(state.config.app.name||'').trim()) throw new Error('Enter an App display name in App Identity.');
+    const allowed=new Set(Object.keys(ARKDesigner.components||{}));
+    for(const [pageKey,pageData] of Object.entries(state.config.pages||{})){
+      if(!pageData || !Array.isArray(pageData.sections)) throw new Error('Page '+pageKey+' has an invalid component list.');
+      pageData.sections.forEach((section,index)=>{
+        if(!section || !allowed.has(section.type)) throw new Error('Unknown component on '+pageKey+' at position '+(index+1)+'.');
+        if(section.type==='banner_slider' && publish){
+          const slides=Array.isArray(section.items)?section.items:[];
+          if(!slides.length) throw new Error('Add at least one image to every Image Slider before publishing.');
+          slides.forEach((slide,i)=>{
+            if(!slide || !/^https?:\/\//i.test(String(slide.image_url||''))) throw new Error('Image Slider on '+pageKey+' needs a valid image URL for slide '+(i+1)+'.');
+          });
+        }
+      });
+    }
+    return true;
+  }
   function save(publish){
+    try{validateConfig(publish);}catch(error){toast(error.message,true);return;}
     const button=publish?$('#ark-publish'):$('#ark-save-draft');button.prop('disabled',true).text('Saving…');
     request(publish?'studio/publish':'studio/draft','POST',state.config).then(result=>{
-      state.config.version=result.version||state.config.version;state.dirty=false;
+      state.config.version=result.version||state.config.version;state.config.updated_at=result.updated_at||state.config.updated_at;state.dirty=false;
       $('#ark-version-label').text(publish?'Published v'+state.config.version:'Draft saved');
       toast(publish?'Published to all supported app clients.':'Draft saved.');
     }).catch(e=>toast(e.message,true)).finally(()=>button.prop('disabled',false).text(publish?'Publish changes ↗':'Save draft'));
@@ -662,5 +693,6 @@ jQuery(function($){
   $('#ark-save-draft').on('click',()=>save(false));
   $('#ark-publish').on('click',()=>save(true));
   $('#ark-preview-refresh').on('click',renderPreview);
+  $('#ark-version-label').text('Published v'+(state.config.version||1)+' · Draft editor');
   renderComponents();render();loadLivePreview();
 });

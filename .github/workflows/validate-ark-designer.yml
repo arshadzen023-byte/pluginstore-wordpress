@@ -1,0 +1,26 @@
+name: Validate ARK App Designer
+on:
+  pull_request:
+    paths:
+      - 'wp-content/plugins/ark-app-designer/**'
+      - '.github/workflows/validate-ark-designer.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'wp-content/plugins/ark-app-designer/**'
+      - '.github/workflows/validate-ark-designer.yml'
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Validate PHP syntax
+        run: php -l wp-content/plugins/ark-app-designer/ark-app-designer.php
+      - name: Validate Designer JavaScript syntax
+        run: node --check wp-content/plugins/ark-app-designer/assets/admin.js
