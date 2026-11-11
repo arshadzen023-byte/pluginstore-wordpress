@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK Native App API Bridge
  * Description: Secure native app login, registration, profile, wishlist and customer orders API for ARK Native App.
- * Version: 1.0.2
+ * Version: 1.0.3
  * Author: ARK
  * Requires PHP: 8.0
  * Requires Plugins: woocommerce
@@ -543,6 +543,10 @@ final class ARK_Native_API_Bridge {
                 ];
             }
         }
+
+        // Prefer the promo plugin's canonical native payload when it is active.
+        // The in-bridge campaign query remains as a backward-compatible fallback.
+        $promos = apply_filters('ark_native_product_promos', $promos, $product_id);
 
         return rest_ensure_response([
             'id' => $product_id,

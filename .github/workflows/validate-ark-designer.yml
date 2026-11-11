@@ -4,6 +4,7 @@ on:
     paths:
       - 'wp-content/plugins/ark-app-designer/**'
       - 'wp-content/plugins/ark-woo-product-promo-slider/**'
+      - 'wp-content/plugins/ark-native-api-bridge/**'
       - '.github/workflows/validate-ark-designer.yml'
   push:
     branches: [main]
@@ -23,6 +24,8 @@ jobs:
           node-version: '20'
       - name: Validate PHP syntax
         run: php -l wp-content/plugins/ark-app-designer/ark-app-designer.php
+      - name: Validate Native API Bridge PHP syntax
+        run: php -l wp-content/plugins/ark-native-api-bridge/ark-native-api-bridge.php
       - name: Validate Designer JavaScript syntax
         run: node --check wp-content/plugins/ark-app-designer/assets/admin.js
       - name: Validate Promo Slider PHP syntax
