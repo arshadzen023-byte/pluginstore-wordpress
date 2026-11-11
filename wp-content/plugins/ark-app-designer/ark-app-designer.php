@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Designer
  * Description: Server-driven visual app designer for ARK Native / GlowHit Flutter apps, including live layout, navigation, theme and in-app splash configuration.
- * Version: 1.7.1
+ * Version: 1.7.2
  * Author: ARK
  * Requires PHP: 7.4
  */
@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class ARK_App_Designer {
-    const VERSION = '1.7.1';
+    const VERSION = '1.7.2';
     const PUBLISHED = 'ark_app_designer_published';
     const DRAFT = 'ark_app_designer_draft';
     const REVISIONS = 'ark_app_designer_revisions';
@@ -54,6 +54,11 @@ final class ARK_App_Designer {
                 'header_animation' => 'none',
                 'navigation_background' => '#F0EFF5',
                 'navigation_indicator' => '#DDE4FF',
+                'cart_button_background' => '#FFFFFF',
+                'cart_button_text' => '#496292',
+                'buy_button_background' => '#FFD814',
+                'buy_button_text' => '#202733',
+                'buy_button_price' => '#202733',
                 'radius' => 18,
                 'font_scale' => 1.0,
             ],
@@ -319,7 +324,7 @@ final class ARK_App_Designer {
             $candidate = sanitize_hex_color($theme[$color] ?? '');
             $theme[$color] = $candidate ?: $base['theme'][$color];
         }
-        foreach (['header_background','header_text','navigation_background','navigation_indicator'] as $color) {
+        foreach (['header_background','header_text','navigation_background','navigation_indicator','cart_button_background','cart_button_text','buy_button_background','buy_button_text','buy_button_price'] as $color) {
             $candidate = sanitize_hex_color($theme[$color] ?? '');
             $theme[$color] = $candidate ?: ($base['theme'][$color] ?? '#FFFFFF');
         }
