@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Designer
  * Description: Server-driven visual app designer for ARK Native / GlowHit Flutter apps, including live layout, navigation, theme and in-app splash configuration.
- * Version: 1.7.2
+ * Version: 1.7.3
  * Author: ARK
  * Requires PHP: 7.4
  */
@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class ARK_App_Designer {
-    const VERSION = '1.7.2';
+    const VERSION = '1.7.3';
     const PUBLISHED = 'ark_app_designer_published';
     const DRAFT = 'ark_app_designer_draft';
     const REVISIONS = 'ark_app_designer_revisions';
@@ -174,7 +174,7 @@ final class ARK_App_Designer {
             'faq' => ['label' => 'FAQ accordion', 'icon' => '?', 'description' => 'Expandable question and answer list'],
             'coupon_banner' => ['label' => 'Coupon card', 'icon' => '％', 'description' => 'Coupon code with copy action'],
             'spacer' => ['label' => 'Spacing', 'icon' => '↕', 'description' => 'Vertical spacing'],
-            'product_gallery' => ['label' => 'Product gallery', 'icon' => '▧', 'description' => 'Native product image gallery'],
+            'product_gallery' => ['label' => 'Product gallery', 'icon' => '▧', 'description' => 'Auto-sliding product images with full-screen zoom and floating actions'],
             'product_title' => ['label' => 'Product title', 'icon' => 'T', 'description' => 'Native WooCommerce product title'],
             'product_price' => ['label' => 'Price card', 'icon' => '₹', 'description' => 'Native product price and savings'],
             'product_delivery' => ['label' => 'Delivery card', 'icon' => '⌖', 'description' => 'Native delivery information'],
@@ -182,7 +182,7 @@ final class ARK_App_Designer {
             'product_specs' => ['label' => 'Specifications', 'icon' => '☷', 'description' => 'Native product attributes'],
             'product_reviews' => ['label' => 'Reviews', 'icon' => '★', 'description' => 'Native reviews area'],
             'product_offers' => ['label' => 'Product offers', 'icon' => '%', 'description' => 'Native sale and savings card'],
-            'product_recommended' => ['label' => 'Recommended offers', 'icon' => '✦', 'description' => 'Promoted products configured in WooCommerce'],
+            'product_recommended' => ['label' => 'Recommended offers', 'icon' => '✦', 'description' => 'Compact auto-sliding WooCommerce promotions with sponsored badge'],
             'account_profile' => ['label' => 'Profile card', 'icon' => '☺', 'description' => 'Native signed-in account details'],
             'account_menu' => ['label' => 'Account menu', 'icon' => '☰', 'description' => 'Native account actions'],
             'address_selector' => ['label' => 'Delivery address selector', 'icon' => '⌖', 'description' => 'Show the saved delivery address with an edit action'],
@@ -452,6 +452,34 @@ final class ARK_App_Designer {
                             'link' => $mode === 'chrome' ? $this->clean_url($link_value) : sanitize_text_field($link_value),
                         ];
                     }
+                }
+                if ($type === 'product_gallery') {
+                    $item['gallery_height'] = min(600, max(220, absint($section['gallery_height'] ?? 390)));
+                    $item['gallery_fit'] = in_array(($section['gallery_fit'] ?? 'contain'), ['contain','cover'], true) ? ($section['gallery_fit'] ?? 'contain') : 'contain';
+                    $item['auto_slide'] = !array_key_exists('auto_slide', $section) || (bool) $section['auto_slide'];
+                    $item['auto_slide_interval_ms'] = min(15000, max(1800, absint($section['auto_slide_interval_ms'] ?? 4200)));
+                    $item['show_dots'] = !array_key_exists('show_dots', $section) || (bool) $section['show_dots'];
+                    $item['allow_zoom'] = !array_key_exists('allow_zoom', $section) || (bool) $section['allow_zoom'];
+                    $item['show_wishlist'] = !array_key_exists('show_wishlist', $section) || (bool) $section['show_wishlist'];
+                    $item['show_share'] = !array_key_exists('show_share', $section) || (bool) $section['show_share'];
+                    $item['action_layout'] = in_array(($section['action_layout'] ?? 'vertical'), ['vertical','horizontal'], true) ? ($section['action_layout'] ?? 'vertical') : 'vertical';
+                    foreach (['action_button_size' => [36,64,44], 'action_icon_size' => [16,30,21], 'action_gap' => [4,24,9], 'action_offset_top' => [4,80,14], 'action_offset_right' => [4,32,14]] as $key => $range) {
+                        $item[$key] = min($range[1], max($range[0], (int) ($section[$key] ?? $range[2])));
+                    }
+                    foreach (['action_background','action_icon_color'] as $key) {
+                        $item[$key] = sanitize_hex_color($section[$key] ?? '') ?: ($key === 'action_background' ? '#FFFFFF' : '#263248');
+                    }
+                }
+                if ($type === 'product_recommended') {
+                    $item['promo_autoplay'] = !array_key_exists('promo_autoplay', $section) || (bool) $section['promo_autoplay'];
+                    $item['promo_interval_ms'] = min(15000, max(1800, absint($section['promo_interval_ms'] ?? 4000)));
+                    $item['promo_card_height'] = min(150, max(88, absint($section['promo_card_height'] ?? 112)));
+                    $item['promo_card_width'] = min(320, max(180, absint($section['promo_card_width'] ?? 238)));
+                    $item['promo_image_size'] = min(100, max(48, absint($section['promo_image_size'] ?? 72)));
+                    $item['show_ad_badge'] = !array_key_exists('show_ad_badge', $section) || (bool) $section['show_ad_badge'];
+                    $item['ad_label'] = sanitize_text_field($section['ad_label'] ?? 'AD');
+                    $item['show_discount'] = !array_key_exists('show_discount', $section) || (bool) $section['show_discount'];
+                    $item['show_original_price'] = !array_key_exists('show_original_price', $section) || (bool) $section['show_original_price'];
                 }
                 $page['sections'][] = $item;
             }

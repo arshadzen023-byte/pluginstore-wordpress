@@ -90,8 +90,22 @@ jQuery(function($){
       if(!items.length)list.text('Add account list items in Properties.');
       card.append(list);
     }else if(s.type==='product_gallery'){
-      $('<div class="ark-preview-banners"></div>').css('height',(Number(s.gallery_height)||260)+'px').text('Product image gallery').appendTo(card);
-    }else if(['product_title','product_price','product_delivery','product_description','product_specs','product_reviews','product_offers','product_recommended'].includes(s.type)){
+      const gallery=$('<div class="ark-preview-gallery"></div>').css({height:(Number(s.gallery_height)||390)+'px',position:'relative',overflow:'hidden',borderRadius:'12px',background:'#f2f4f8',display:'grid',placeItems:'center'});
+      $('<div></div>').text('Swipe product images · Tap to zoom').css({fontSize:'11px',fontWeight:700,color:'#64728a'}).appendTo(gallery);
+      const actions=$('<div class="ark-preview-gallery-actions"></div>').css({position:'absolute',top:(Number(s.action_offset_top)||14)+'px',right:(Number(s.action_offset_right)||14)+'px',display:'flex',flexDirection:s.action_layout==='horizontal'?'row':'column',gap:(Number(s.action_gap)||9)+'px'});
+      if(s.show_wishlist!==false)$('<span>♥</span>').appendTo(actions);
+      if(s.show_share!==false)$('<span>↗</span>').appendTo(actions);
+      actions.children().css({width:(Number(s.action_button_size)||44)+'px',height:(Number(s.action_button_size)||44)+'px',display:'grid',placeItems:'center',borderRadius:'50%',background:s.action_background||'#fff',color:s.action_icon_color||'#263248',fontSize:(Number(s.action_icon_size)||21)+'px',boxShadow:'0 2px 8px #0002'});
+      gallery.append(actions);
+      if(s.show_dots!==false)$('<div>● ○ ○</div>').css({position:'absolute',bottom:'10px',left:0,right:0,textAlign:'center',fontSize:'11px',color:'#4361ee'}).appendTo(gallery);
+      card.append(gallery);
+    }else if(s.type==='product_recommended'){
+      const promo=$('<div class="ark-preview-promo"></div>').css({height:(Number(s.promo_card_height)||112)+'px',display:'flex',alignItems:'center',gap:'9px',padding:'8px',marginTop:'8px',border:'1px solid #e7ebf3',borderRadius:'12px',background:'#fff',position:'relative'});
+      $('<div>Product</div>').css({width:(Number(s.promo_image_size)||72)+'px',height:(Number(s.promo_image_size)||72)+'px',display:'grid',placeItems:'center',background:'#f1f3f8',borderRadius:'8px',fontSize:'10px'}).appendTo(promo);
+      $('<div><b>Recommended product</b><small style="display:block;color:#16834d;margin-top:5px">Offer price · Discount</small></div>').appendTo(promo);
+      if(s.show_ad_badge!==false)$('<span>◉ '+(s.ad_label||'AD')+'</span>').css({position:'absolute',right:'7px',top:'6px',fontSize:'8px',fontWeight:900,color:'#52627c',background:'#eaf0fa',borderRadius:'5px',padding:'3px 5px'}).appendTo(promo);
+      card.append(promo);
+    }else if(['product_title','product_price','product_delivery','product_description','product_specs','product_reviews','product_offers'].includes(s.type)){
       $('<div class="ark-preview-address"></div>').text(s.type.replace('product_','').replace(/_/g,' ').toUpperCase()+' • Native product data').appendTo(card);
     }
         const actions=$('<div class="ark-inspector-actions"></div>');
@@ -442,10 +456,37 @@ jQuery(function($){
       $inspector.append(menu);
     }
     if(s.type==='product_gallery'){
-      $inspector.append(field('Gallery height (px)','gallery_height',s.gallery_height||340,'number'));
+      $inspector.append(field('Gallery height (px)','gallery_height',s.gallery_height||390,'number','Recommended: 340–440 px for a large product hero.'));
       $inspector.append(choiceField('Gallery image fit','gallery_fit',s.gallery_fit||'contain',[
-        ['contain','Contain'],['cover','Cover']
+        ['contain','Show full product (no crop)'],['cover','Fill gallery (may crop)']
       ]));
+      $inspector.append(field('Auto-slide product images','auto_slide',s.auto_slide!==false,'checkbox'));
+      $inspector.append(field('Auto-slide interval (ms)','auto_slide_interval_ms',s.auto_slide_interval_ms||4200,'number'));
+      $inspector.append(field('Show image pagination dots','show_dots',s.show_dots!==false,'checkbox'));
+      $inspector.append(field('Allow tap to full-screen zoom','allow_zoom',s.allow_zoom!==false,'checkbox'));
+      $inspector.append(field('Show Wishlist action','show_wishlist',s.show_wishlist!==false,'checkbox'));
+      $inspector.append(field('Show Share action','show_share',s.show_share!==false,'checkbox'));
+      $inspector.append(choiceField('Floating action layout','action_layout',s.action_layout||'vertical',[
+        ['vertical','Vertical (Flipkart-style)'],['horizontal','Horizontal']
+      ]));
+      $inspector.append(field('Action button size (px)','action_button_size',s.action_button_size||44,'number'));
+      $inspector.append(field('Action icon size (px)','action_icon_size',s.action_icon_size||21,'number'));
+      $inspector.append(field('Space between actions (px)','action_gap',s.action_gap||9,'number'));
+      $inspector.append(field('Top offset (px)','action_offset_top',s.action_offset_top||14,'number'));
+      $inspector.append(field('Right offset (px)','action_offset_right',s.action_offset_right||14,'number'));
+      $inspector.append(field('Action background','action_background',s.action_background||'#FFFFFF','color'));
+      $inspector.append(field('Action icon colour','action_icon_color',s.action_icon_color||'#263248','color'));
+    }
+    if(s.type==='product_recommended'){
+      $inspector.append(field('Auto-slide recommended offers','promo_autoplay',s.promo_autoplay!==false,'checkbox'));
+      $inspector.append(field('Auto-slide interval (ms)','promo_interval_ms',s.promo_interval_ms||4000,'number'));
+      $inspector.append(field('Offer card height (px)','promo_card_height',s.promo_card_height||112,'number'));
+      $inspector.append(field('Offer card width (px)','promo_card_width',s.promo_card_width||238,'number'));
+      $inspector.append(field('Offer image size (px)','promo_image_size',s.promo_image_size||72,'number'));
+      $inspector.append(field('Show sponsored AD badge','show_ad_badge',s.show_ad_badge!==false,'checkbox'));
+      $inspector.append(field('AD badge label','ad_label',s.ad_label||'AD'));
+      $inspector.append(field('Show discount percentage','show_discount',s.show_discount!==false,'checkbox'));
+      $inspector.append(field('Show original crossed price','show_original_price',s.show_original_price!==false,'checkbox'));
     }
     if(s.type==='product_title'){
       $inspector.append(field('Title font size (px)','font_size',s.font_size||23,'number'));
@@ -635,6 +676,8 @@ jQuery(function($){
     const defaults={id,type,visible:true,title:ARKDesigner.components[type]?.label||type};
     if(['product_grid','product_carousel','recently_viewed','category_grid'].includes(type))Object.assign(defaults,{limit:8,columns:2,source:'latest',card_width:.46,card_ratio:.66});
     if(type==='banner_slider')Object.assign(defaults,{height:178,interval_ms:3500,animation_ms:450,card_width:.92,slide_gap:8,fit:'cover',show_dots:true,show_arrows:false,items:[]});
+    if(type==='product_gallery')Object.assign(defaults,{gallery_height:390,gallery_fit:'contain',auto_slide:true,auto_slide_interval_ms:4200,show_dots:true,allow_zoom:true,show_wishlist:true,show_share:true,action_layout:'vertical',action_button_size:44,action_icon_size:21,action_gap:9,action_offset_top:14,action_offset_right:14,action_background:'#FFFFFF',action_icon_color:'#263248'});
+    if(type==='product_recommended')Object.assign(defaults,{promo_autoplay:true,promo_interval_ms:4000,promo_card_height:112,promo_card_width:238,promo_image_size:72,show_ad_badge:true,ad_label:'AD',show_discount:true,show_original_price:true});
     if(type==='search')Object.assign(defaults,{placeholder:'Search products...',hints:['Search Watch','Search TV','Search Plugin'],hint_interval_ms:2200});
     if(type==='product_grid'||type==='product_carousel')Object.assign(defaults,{link_type:'product',destination_url:'',category_id:0});
     if(type==='address_selector')Object.assign(defaults,{title:'Delivery address',subtitle:'Choose where your order should arrive.',address_style:'flipkart',show_edit:true,show_phone:true,show_city_pin:true,allow_address_switch:true,compact_on_mobile:false});

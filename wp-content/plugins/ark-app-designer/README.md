@@ -101,3 +101,12 @@ Server-driven changes can modify layout, content, themes, navigation labels, com
 - Auto-slide interval setting for each image slider.
 - Fixed component/property rails: the centre phone canvas scrolls independently; on mobile the two editing rails remain in their own scroll regions.
 - Published config fields are preserved and sanitized by the server.
+
+
+## Version 1.7.3 — Product page controls
+
+- Added product gallery auto-slide, image fit, pagination and full-screen zoom settings.
+- Added editable floating Wishlist/Share layout, button size, icon size, gap, offsets, background and icon colour.
+- Added Recommended Offers carousel controls for auto-slide, interval, card/image dimensions and sponsored AD badge.
+- Product gallery and offer settings are sanitized server-side with bounded numeric values and hex colours.
+- The mobile app renders remote product photos through HTTPS-only cached image loading; page transitions and zoom are native Flutter widgets.
