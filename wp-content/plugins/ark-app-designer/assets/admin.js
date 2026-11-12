@@ -442,10 +442,37 @@ jQuery(function($){
       $inspector.append(menu);
     }
     if(s.type==='product_gallery'){
-      $inspector.append(field('Gallery height (px)','gallery_height',s.gallery_height||340,'number'));
+      $inspector.append(field('Gallery height (px)','gallery_height',s.gallery_height||390,'number','Recommended: 340–440 px for a large product hero.'));
       $inspector.append(choiceField('Gallery image fit','gallery_fit',s.gallery_fit||'contain',[
-        ['contain','Contain'],['cover','Cover']
+        ['contain','Show full product (no crop)'],['cover','Fill gallery (may crop)']
       ]));
+      $inspector.append(field('Auto-slide product images','auto_slide',s.auto_slide!==false,'checkbox'));
+      $inspector.append(field('Auto-slide interval (ms)','auto_slide_interval_ms',s.auto_slide_interval_ms||4200,'number'));
+      $inspector.append(field('Show image pagination dots','show_dots',s.show_dots!==false,'checkbox'));
+      $inspector.append(field('Allow tap to full-screen zoom','allow_zoom',s.allow_zoom!==false,'checkbox'));
+      $inspector.append(field('Show Wishlist action','show_wishlist',s.show_wishlist!==false,'checkbox'));
+      $inspector.append(field('Show Share action','show_share',s.show_share!==false,'checkbox'));
+      $inspector.append(choiceField('Floating action layout','action_layout',s.action_layout||'vertical',[
+        ['vertical','Vertical (Flipkart-style)'],['horizontal','Horizontal']
+      ]));
+      $inspector.append(field('Action button size (px)','action_button_size',s.action_button_size||44,'number'));
+      $inspector.append(field('Action icon size (px)','action_icon_size',s.action_icon_size||21,'number'));
+      $inspector.append(field('Space between actions (px)','action_gap',s.action_gap||9,'number'));
+      $inspector.append(field('Top offset (px)','action_offset_top',s.action_offset_top||14,'number'));
+      $inspector.append(field('Right offset (px)','action_offset_right',s.action_offset_right||14,'number'));
+      $inspector.append(field('Action background','action_background',s.action_background||'#FFFFFF','color'));
+      $inspector.append(field('Action icon colour','action_icon_color',s.action_icon_color||'#263248','color'));
+    }
+    if(s.type==='product_recommended'){
+      $inspector.append(field('Auto-slide recommended offers','promo_autoplay',s.promo_autoplay!==false,'checkbox'));
+      $inspector.append(field('Auto-slide interval (ms)','promo_interval_ms',s.promo_interval_ms||4000,'number'));
+      $inspector.append(field('Offer card height (px)','promo_card_height',s.promo_card_height||112,'number'));
+      $inspector.append(field('Offer card width (px)','promo_card_width',s.promo_card_width||238,'number'));
+      $inspector.append(field('Offer image size (px)','promo_image_size',s.promo_image_size||72,'number'));
+      $inspector.append(field('Show sponsored AD badge','show_ad_badge',s.show_ad_badge!==false,'checkbox'));
+      $inspector.append(field('AD badge label','ad_label',s.ad_label||'AD'));
+      $inspector.append(field('Show discount percentage','show_discount',s.show_discount!==false,'checkbox'));
+      $inspector.append(field('Show original crossed price','show_original_price',s.show_original_price!==false,'checkbox'));
     }
     if(s.type==='product_title'){
       $inspector.append(field('Title font size (px)','font_size',s.font_size||23,'number'));
