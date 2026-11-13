@@ -36,7 +36,7 @@ jobs:
         run: |
           mkdir -p dist
           cd wp-content/plugins
-          zip -r ../../dist/ark-app-designer-1.7.4.zip ark-app-designer
+          zip -r ../../dist/ark-app-designer-1.8.0.zip ark-app-designer
           zip -r ../../dist/ark-woo-product-promo-slider-1.1.2.zip ark-woo-product-promo-slider
       - name: Save updated plugin ZIPs
         continue-on-error: true
@@ -44,6 +44,6 @@ jobs:
         with:
           name: ark-native-wordpress-plugins-1.7.4
           path: |
-            dist/ark-app-designer-1.7.4.zip
+            dist/ark-app-designer-1.8.0.zip
             dist/ark-woo-product-promo-slider-1.1.2.zip
           retention-days: 30

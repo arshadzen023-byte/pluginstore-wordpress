@@ -103,7 +103,7 @@ Server-driven changes can modify layout, content, themes, navigation labels, com
 - Published config fields are preserved and sanitized by the server.
 
 
-## Version 1.7.4 — Product page controls
+## Version 1.8.0 — Product page controls
 
 - Added product gallery auto-slide, image fit, pagination and full-screen zoom settings.
 - Added editable floating Wishlist/Share layout, button size, icon size, gap, offsets, background and icon colour.
@@ -112,10 +112,39 @@ Server-driven changes can modify layout, content, themes, navigation labels, com
 - The mobile app renders remote product photos through HTTPS-only cached image loading; page transitions and zoom are native Flutter widgets.
 
 
-## Version 1.7.4 — Image Slider persistence and native tap destinations
+## Version 1.8.0 — Image Slider persistence and native tap destinations
 
 - Image Slider slides keep both the WordPress Media Library attachment ID and canonical image URL in saved/published configuration.
 - Explicitly removed slides remain removed after refresh; empty sliders can be saved without restoring stale legacy data.
 - The common Tap action editor offers native page and published product destinations; deep links and HTTPS website links remain selectable.
 - Delivery card settings are normalized and published for the native app renderer.
 - Product Description preview length defaults to 80 words; the native renderer reveals the full text and embedded images when expanded.
+
+
+## ARK Live Slider — version 1.8.0
+
+The old embedded **Image slider** component has been replaced by **ARK Live Slider**. Designer JSON now stores only a short `slider_key`; it no longer embeds the full array of banner image URLs.
+
+### Fast storage and delivery
+- Image files are uploaded to the existing WordPress Media Library / `wp-content/uploads` storage. The plugin saves the WordPress attachment ID and optimized image URL (the `large` image size) for each slide.
+- Slider settings live in `{$wpdb->prefix}ark_live_sliders` and individual slide records live in `{$wpdb->prefix}ark_live_slider_items`. The actual SQL table prefix is generated from WordPress `$wpdb->prefix` (the supplied database dump uses `wp0j_`).
+- Flutter requests `/wp-json/ark-designer/v1/sliders/{slider_key}`; the response is small JSON metadata plus image URLs, and the image bytes are served directly from Uploads/CDN.
+- The public endpoint returns only enabled slides whose optional start/end schedule is active, with short-lived cache headers. Flutter also caches the last successful slider response for offline fallback.
+- Existing published/draft `banner_slider` sections are migrated into the SQL tables and converted to `ark_live_slider` references.
+
+### Working controls and capabilities
+1. Batch-add or replace images from the Media Library.
+2. In-app links to Home, Categories, Product, Account, Wishlist, Cart, WooCommerce products and WooCommerce categories.
+3. Website links and app deep links.
+4. Per-slide start/end scheduling and active/inactive toggles.
+5. Automatic playback and adjustable slide duration.
+6. Infinite looping or stop-at-last-slide mode.
+7. Slide, fade and zoom transitions.
+8. Manual swipe plus optional previous/next arrows.
+9. Dots, progress-bar or hidden pagination.
+10. Image cover/contain/fill, width, height, gap and corner radius controls.
+11. Optional slide title, subtitle, alt text and CTA button.
+12. Drag/order arrows and saved slide order.
+13. Pause autoplay after a user interaction and resume it again.
+
+The authenticated studio endpoint is `/wp-json/ark-designer/v1/studio/sliders/{slider_key}`; the public app endpoint is `/wp-json/ark-designer/v1/sliders/{slider_key}`.

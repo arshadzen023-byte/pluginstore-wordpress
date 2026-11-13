@@ -182,3 +182,22 @@ body.toplevel_page_ark-app-designer .ark-footer { flex:0 0 auto; }
   body.toplevel_page_ark-app-designer .ark-canvas-area { grid-column:1/-1; grid-row:2; height:48vh!important; border-top:1px solid var(--ark-line); }
   body.toplevel_page_ark-app-designer .ark-component-list { grid-template-columns:1fr!important; }
 }
+
+
+/* ARK Live Slider — SQL-backed component inspector */
+.ark-live-slider-preview{display:flex;align-items:stretch;overflow:hidden;position:relative;border:1px solid #dce4f2;border-radius:12px;background:#f2f5fb}
+.ark-live-slider-empty{display:grid;place-items:center;width:100%;color:#64748b;font-size:12px;font-weight:700;background:linear-gradient(120deg,#edf2ff,#f8faff)}
+.ark-live-slider-status{display:block;margin-top:7px;color:#66748b;font-size:10px}
+.ark-slider-loading{padding:18px;border:1px dashed #cbd5e1;border-radius:12px;color:#64748b;font-size:12px;text-align:center;background:#f8faff}
+.ark-live-slide-list{margin-top:14px;padding-top:12px;border-top:1px solid #e4eaf4}
+.ark-live-slide-item{display:grid;gap:9px;padding:12px;margin:10px 0;border:1px solid #dce4f1;border-radius:13px;background:#fff}
+.ark-live-slide-heading{display:flex;align-items:center;gap:7px}
+.ark-live-slide-heading>b{margin-right:auto;color:#334155;font-size:11px;letter-spacing:.06em}
+.ark-slide-order{width:30px;height:28px;border:1px solid #dbe3f0;border-radius:7px;background:#f8faff;color:#334155;cursor:pointer}
+.ark-slide-order:disabled{opacity:.35;cursor:not-allowed}
+.ark-slide-active{display:flex;align-items:center;gap:5px;color:#53627c;font-size:11px}
+.ark-live-slide-thumb{width:100%;height:142px;object-fit:cover;border-radius:9px;background:#eef2f8}
+.ark-live-slide-empty{display:grid;place-items:center;color:#7b879a;font-size:12px;font-weight:700}
+.ark-slider-setting{margin:9px 0}
+.ark-slider-save{width:100%;justify-content:center;margin-top:12px}
+.ark-live-slide-item .ark-slide-remove{border:1px solid #f0cccc;background:#fff8f8;color:#bb3030;border-radius:8px;padding:8px 10px;cursor:pointer}

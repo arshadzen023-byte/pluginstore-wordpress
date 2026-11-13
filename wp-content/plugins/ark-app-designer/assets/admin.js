@@ -1,6 +1,6 @@
 jQuery(function($){
   const state={config:ARKDesigner.config||{},page:'home',selected:null,view:'page',dirty:false};
-  const liveCache={categories:null,products:null,targets:null,loading:false};
+  const liveCache={categories:null,products:null,targets:null,sliders:{},sliderPending:{},loading:false};
   const $pages=$('#ark-pages'),$components=$('#ark-components'),$preview=$('#ark-preview'),$inspector=$('#ark-inspector-content');
   const labels={home:'Home page',categories:'Categories page',wishlist:'Wishlist page',product:'Product page',account:'Account page'};
   const collapseState={left:false,right:false};
@@ -42,23 +42,34 @@ jQuery(function($){
     if(s.subtitle||s.text)$('<div class="ark-preview-sub"></div>').text(s.subtitle||s.text).appendTo(card);
     if(s.type==='search'){
       $('<div class="ark-real-search"></div>').text('⌕  '+(s.hints?.[0]||s.placeholder||'Search products…')).appendTo(card);
-    }else if(s.type==='banner_slider'||s.type==='image'){
-      if(s.type==='banner_slider' && Array.isArray(s.items) && s.items.some(slide=>slide&&slide.image_url)){
-        const validSlides=s.items.filter(slide=>slide&&slide.image_url);
-        const rail=$('<div class="ark-preview-slider-rail"></div>').css({height:(Number(s.height)||178)+'px',gap:(Number(s.slide_gap)||8)+'px'});
-        validSlides.forEach(slide=>{
-          const frame=$('<div class="ark-preview-real-banner"></div>').css({height:'100%',flex:'0 0 '+(Math.max(.45,Math.min(1,Number(s.card_width)||.92))*100)+'%',borderRadius:(Number(s.radius)||16)+'px'});
-          $('<img alt="">').attr('src',slide.image_url).css({width:'100%',height:'100%',objectFit:s.fit||'cover'}).appendTo(frame);
+    }else if(s.type==='ark_live_slider'){
+      const saved=liveCache.sliders[s.slider_key];
+      if(!saved)loadLiveSlider(s);
+      const slides=saved?.slides||[];
+      const rail=$('<div class="ark-preview-slider-rail ark-live-slider-preview"></div>')
+        .css({height:(Number(saved?.settings?.height_px)||178)+'px',gap:'8px'});
+      if(slides.length){
+        slides.slice(0,4).forEach(slide=>{
+          const frame=$('<div class="ark-preview-real-banner"></div>').css({
+            height:'100%',
+            flex:'0 0 '+(Math.max(.45,Math.min(1,Number(saved.settings.card_width)||1))*100)+'%',
+            borderRadius:(Number(saved.settings.radius)||16)+'px'
+          });
+          $('<img alt="">').attr('src',slide.image_url).css({
+            width:'100%',height:'100%',objectFit:saved.settings.image_fit||'cover'
+          }).appendTo(frame);
           if(slide.title)$('<span class="ark-preview-slide-title"></span>').text(slide.title).appendTo(frame);
           rail.append(frame);
         });
-        card.append(rail);
-        if(s.show_dots!==false){const dots=$('<div class="ark-preview-dots"></div>');for(let n=0;n<validSlides.length;n++)$('<span></span>').text(n===0?'●':'○').appendTo(dots);card.append(dots);}
-      }else if(s.type==='image' && s.image_url){
-        $('<img class="ark-preview-single-image" alt="">').attr('src',s.image_url).appendTo(card);
       }else{
-        $('<div class="ark-preview-banners"></div>').text((s.image_url||s.items?.[0]?.image_url)?'Image configured':'Add banner image').appendTo(card);
+        $('<div class="ark-live-slider-empty"></div>').text('Add images in SQL-backed Slider Properties').appendTo(rail);
       }
+      card.append(rail);
+      $('<small class="ark-live-slider-status"></small>')
+        .text(slides.length+' saved slides · '+(saved?.settings?.transition||'slide')+' transition')
+        .appendTo(card);
+    }else if(s.type==='image' && s.image_url){
+      $('<img class="ark-preview-single-image" alt="">').attr('src',s.image_url).appendTo(card);
     }else if(['product_grid','product_carousel','recently_viewed','category_grid','icon_grid'].includes(s.type)){
       const grid=$('<div class="ark-preview-grid"></div>').attr('data-card-design',s.card_design||'flipkart');
       const liveItems=s.type==='category_grid'?(liveCache.categories||[]):(liveCache.products||[]);
@@ -257,6 +268,12 @@ jQuery(function($){
         products.forEach(item=>group.append($('<option></option>').val('product:'+item.id).text('#'+item.id+' · '+(item.name||'Product'))));
         select.append(group);
       }
+      const categories=data?.categories||[];
+      if(categories.length){
+        const group=$('<optgroup label="WooCommerce categories"></optgroup>');
+        categories.forEach(item=>group.append($('<option></option>').val('category:'+item.id).text(item.name||('Category #'+item.id))));
+        select.append(group);
+      }
       if(current && !select.find('option').filter(function(){return $(this).val()===current;}).length){
         select.append($('<option></option>').val(current).text('Saved destination: '+current));
       }
@@ -284,6 +301,170 @@ jQuery(function($){
     wrap.append(select);
     if(hint)$('<div class="description"></div>').text(hint).appendTo(wrap);
     return wrap;
+  }
+
+  function sliderApiPath(key){return 'studio/sliders/'+encodeURIComponent(key);}
+  function loadLiveSlider(section,force=false){
+    const key=String(section.slider_key||'').trim();
+    if(!key)return Promise.resolve(null);
+    if(liveCache.sliders[key]&&!force)return Promise.resolve(liveCache.sliders[key]);
+    if(liveCache.sliderPending[key])return liveCache.sliderPending[key];
+    const pending=request(sliderApiPath(key),'GET').then(data=>{
+      liveCache.sliders[key]={...data,dirty:false};
+      renderPreview();
+      if(selected()?.id===section.id)renderInspector();
+      return liveCache.sliders[key];
+    }).catch(error=>{
+      toast('Slider data could not load.',true);
+      throw error;
+    }).finally(()=>{delete liveCache.sliderPending[key];});
+    liveCache.sliderPending[key]=pending;
+    return pending;
+  }
+  function markSliderDirty(){
+    const current=selected();
+    const key=current?.slider_key;
+    if(key&&liveCache.sliders[key])liveCache.sliders[key].dirty=true;
+    markDirty();
+  }
+  function sliderSettingField(slider,label,key,type='text'){
+    const wrap=$('<div class="ark-field ark-slider-setting"></div>');
+    $('<label></label>').text(label).appendTo(wrap);
+    let input;
+    if(type==='checkbox'){
+      input=$('<input type="checkbox">').prop('checked',!!slider.settings[key]);
+    }else if(type==='select'){
+      input=$('<select></select>');
+      const options={
+        transition:[['slide','Slide'],['fade','Fade'],['zoom','Zoom']],
+        image_fit:[['cover','Cover'],['contain','Contain'],['fill','Stretch']],
+        pagination:[['dots','Dots'],['progress','Progress bar'],['none','Hidden']]
+      }[key]||[];
+      options.forEach(([v,l])=>input.append($('<option></option>').val(v).text(l)));
+      input.val(slider.settings[key]??options[0]?.[0]??'');
+    }else{
+      input=$('<input>').attr('type',type).val(slider.settings[key]??'');
+    }
+    input.on('input change',function(){
+      slider.settings[key]=type==='checkbox'?$(this).is(':checked'):(type==='number'?Number($(this).val()):$(this).val());
+      markSliderDirty();renderPreview();
+    });
+    wrap.append(input);return wrap;
+  }
+  function slideTextField(slide,label,key,type='text'){
+    const wrap=$('<div class="ark-field ark-slide-meta-field"></div>');
+    $('<label></label>').text(label).appendTo(wrap);
+    const input=$('<input>').attr('type',type).val(slide[key]||'');
+    if(type==='datetime-local')input.val(String(slide[key]||'').replace(' ','T').slice(0,16));
+    input.on('input change',function(){slide[key]=$(this).val();markSliderDirty();});
+    wrap.append(input);return wrap;
+  }
+  function renderLiveSliderInspector(section){
+    if(!section.slider_key){
+      section.slider_key=('slider-'+String(section.id||Date.now())).toLowerCase().replace(/[^a-z0-9_-]/g,'-').slice(0,64);
+      markDirty();
+    }
+    const key=section.slider_key;
+    const slider=liveCache.sliders[key];
+    $('#ark-inspector-title').text('ARK Live Slider · SQL storage');
+    if(!slider){
+      $('<div class="ark-slider-loading"></div>').text('Loading saved slider settings and images…').appendTo($inspector);
+      loadLiveSlider(section).catch(()=>{});return;
+    }
+    slider.settings=slider.settings||{};
+    slider.slides=Array.isArray(slider.slides)?slider.slides:[];
+    $('<p class="description"></p>').text('Images stay in WordPress Media/Uploads. Slide data, links, order and schedules are saved in dedicated SQL tables, not Designer JSON.').appendTo($inspector);
+    $inspector.append(sliderSettingField(slider,'Slider enabled','enabled','checkbox'));
+    $inspector.append(sliderSettingField(slider,'Auto play','autoplay','checkbox'));
+    $inspector.append(sliderSettingField(slider,'Slide duration (ms)','interval_ms','number'));
+    $inspector.append(sliderSettingField(slider,'Infinite loop','loop_slides','checkbox'));
+    $inspector.append(sliderSettingField(slider,'Transition animation','transition','select'));
+    $inspector.append(sliderSettingField(slider,'Slider height (px)','height_px','number'));
+    $inspector.append(sliderSettingField(slider,'Image fit','image_fit','select'));
+    $inspector.append(sliderSettingField(slider,'Card width (0.45–1)','card_width','number'));
+    $inspector.append(sliderSettingField(slider,'Gap between slides (px)','slide_gap','number'));
+    $inspector.append(sliderSettingField(slider,'Previous / next arrows','show_arrows','checkbox'));
+    $inspector.append(sliderSettingField(slider,'Pagination','pagination','select'));
+    $inspector.append(sliderSettingField(slider,'Pause on interaction','pause_on_interaction','checkbox'));
+    $inspector.append(sliderSettingField(slider,'Corner radius (px)','radius','number'));
+    const wrap=$('<div class="ark-slide-editor ark-live-slide-list"></div>');
+    const head=$('<div class="ark-slide-editor-head"></div>');
+    $('<b></b>').text('SQL SAVED SLIDES').appendTo(head);
+    $('<span></span>').text(slider.slides.length+' slides').appendTo(head);
+    wrap.append(head);
+    slider.slides.forEach((slide,index)=>{
+      const card=$('<div class="ark-slide-item ark-live-slide-item"></div>');
+      const cardHead=$('<div class="ark-live-slide-heading"></div>');
+      $('<b></b>').text('SLIDE '+(index+1)).appendTo(cardHead);
+      $('<button type="button" class="ark-slide-order">↑</button>').prop('disabled',index===0).on('click',()=>{
+        [slider.slides[index-1],slider.slides[index]]=[slider.slides[index],slider.slides[index-1]];
+        markSliderDirty();renderInspector();
+      }).appendTo(cardHead);
+      $('<button type="button" class="ark-slide-order">↓</button>').prop('disabled',index===slider.slides.length-1).on('click',()=>{
+        [slider.slides[index+1],slider.slides[index]]=[slider.slides[index],slider.slides[index+1]];
+        markSliderDirty();renderInspector();
+      }).appendTo(cardHead);
+      const active=$('<label class="ark-slide-active"><input type="checkbox"> Active</label>');
+      active.find('input').prop('checked',slide.active!==false).on('change',function(){slide.active=$(this).is(':checked');markSliderDirty();});
+      cardHead.append(active);card.append(cardHead);
+      if(slide.image_url)$('<img class="ark-live-slide-thumb" alt="">').attr('src',slide.image_url).appendTo(card);
+      else $('<div class="ark-live-slide-thumb ark-live-slide-empty"></div>').text('Choose image').appendTo(card);
+      $('<button type="button" class="ark-media-pick">Choose / replace image</button>').on('click',function(){
+        const frame=wp.media({title:'Choose slider image',button:{text:'Use image'},multiple:false,library:{type:'image'}});
+        frame.on('select',function(){
+          const media=frame.state().get('selection').first().toJSON();
+          slide.attachment_id=Number(media.id)||0;slide.image_url=media.url;
+          slide.alt_text=media.alt||slide.alt_text||media.title||'';
+          markSliderDirty();renderInspector();renderPreview();
+        });frame.open();
+      }).appendTo(card);
+      card.append(slideTextField(slide,'Image title','title'));
+      card.append(slideTextField(slide,'Subtitle','subtitle'));
+      card.append(slideTextField(slide,'Image alt text','alt_text'));
+      card.append(slideTextField(slide,'CTA button label','button_label'));
+      const mode=$('<div class="ark-field"><label>Tap action type</label><select><option value="in_app">In-app destination</option><option value="deeplink">App deep link</option><option value="chrome">Open website</option></select></div>');
+      mode.find('select').val(slide.link_type||'in_app').on('change',function(){slide.link_type=$(this).val();markSliderDirty();renderInspector();});
+      card.append(mode);
+      if((slide.link_type||'in_app')==='in_app'){
+        card.append(inAppTargetField('Open page / product / category',slide.link_value||'',value=>{slide.link_value=value;markSliderDirty();}));
+      }else{
+        card.append(slideTextField(slide,'URL / deep link','link_value',slide.link_type==='chrome'?'url':'text'));
+      }
+      card.append(slideTextField(slide,'Start showing (optional)','starts_at','datetime-local'));
+      card.append(slideTextField(slide,'Stop showing (optional)','ends_at','datetime-local'));
+      $('<button type="button" class="ark-slide-remove">Delete slide</button>').on('click',()=>{
+        slider.slides.splice(index,1);markSliderDirty();renderInspector();renderPreview();
+      }).appendTo(card);
+      wrap.append(card);
+    });
+    $('<button type="button" class="ark-slide-add">＋ Add images from Media Library</button>').on('click',function(){
+      const frame=wp.media({title:'Add slider images',button:{text:'Add selected images'},multiple:true,library:{type:'image'}});
+      frame.on('select',function(){
+        frame.state().get('selection').each(function(attachment){
+          const media=attachment.toJSON();
+          if(media.url)slider.slides.push({
+            attachment_id:Number(media.id)||0,image_url:media.url,title:media.title||'',
+            subtitle:'',alt_text:media.alt||'',button_label:'',
+            link_type:'in_app',link_value:'page:home',active:true,starts_at:'',ends_at:''
+          });
+        });
+        markSliderDirty();renderInspector();renderPreview();
+      });
+      frame.open();
+    }).appendTo(wrap);
+    $('<button type="button" class="ark-btn ark-btn-publish ark-slider-save">Save slider to SQL</button>').on('click',function(){
+      const button=$(this).prop('disabled',true).text('Saving images…');
+      request(sliderApiPath(key),'POST',{settings:slider.settings,slides:slider.slides})
+        .then(result=>{slider.dirty=false;toast('Slider saved · '+result.saved_slides+' slides stored.');return loadLiveSlider(section,true);})
+        .catch(error=>toast(error.message||'Slider save failed.',true))
+        .finally(()=>button.prop('disabled',false).text('Save slider to SQL'));
+    }).appendTo(wrap);
+    $inspector.append(wrap);
+  }
+  function saveDirtyLiveSliders(){
+    return Promise.all(Object.entries(liveCache.sliders).filter(([,slider])=>slider?.dirty).map(([key,slider])=>
+      request(sliderApiPath(key),'POST',{settings:slider.settings,slides:slider.slides}).then(()=>{slider.dirty=false;})
+    ));
   }
   const sourceState={files:[],path:'',sha:'',branch:'',tokenSaved:false};
   function renderSourceEditor(){
@@ -601,14 +782,6 @@ jQuery(function($){
       $inspector.append(field('Button label','button_label',s.button_label||s.title||'Open'));
       $inspector.append(field('Button link','button_url',s.button_url||'','text'));
     }
-    if(s.type==='banner_slider'){
-        $inspector.append(field('Card width (0.65–1.0)','card_width',s.card_width||.92,'number'));
-        $inspector.append(field('Animation speed (ms)','animation_ms',s.animation_ms||450,'number'));
-        $inspector.append(field('Auto-slide interval (ms)','interval_ms',s.interval_ms||3500,'number','How long each image stays visible before moving to the next.'));
-        $inspector.append(field('Show dots','show_dots',s.show_dots!==false,'checkbox'));
-        $inspector.append(field('Show arrows','show_arrows',!!s.show_arrows,'checkbox'));
-        $inspector.append(field('Image fit','fit',s.fit||'cover','select'));
-    }
     if(['product_grid','product_carousel','recently_viewed','category_grid','icon_grid'].includes(s.type)){
       $inspector.append(field('Maximum items','limit',s.limit||8,'number'));
       if(s.type==='product_grid'||s.type==='category_grid'||s.type==='icon_grid')$inspector.append(field('Columns','columns',s.columns||2,'number'));
@@ -658,82 +831,8 @@ jQuery(function($){
         catch(e){toast('Icon links JSON is invalid.',true);}
       });
     }
-    if(s.type==='banner_slider'){
-      $inspector.append(field('Banner height','height',s.height||178,'number'));
-      $inspector.append(field('Card width (0.45–1.0)','card_width',s.card_width||.92,'number','Use 1.0 for full width or 0.90 to show a preview of the next slide.'));
-      $inspector.append(field('Animation speed (ms)','animation_ms',s.animation_ms||450,'number'));
-      $inspector.append(field('Slide gap (px)','slide_gap',s.slide_gap??8,'number'));
-      $inspector.append(field('Auto-slide interval (ms)','interval_ms',s.interval_ms||3500,'number'));
-      $inspector.append(field('Auto-play slider','autoplay',s.autoplay!==false,'checkbox'));
-      $inspector.append(choiceField('Image fit','fit',s.fit||'cover',[['cover','Cover'],['contain','Contain'],['fill','Stretch']]));
-      $inspector.append(field('Show pagination dots','show_dots',s.show_dots!==false,'checkbox'));
-      $inspector.append(field('Show arrows','show_arrows',s.show_arrows===true,'checkbox'));
-      if(!Array.isArray(s.items))s.items=(s.items&&typeof s.items==='object')?[s.items]:[];
-      s.items=s.items.map(slide=>typeof slide==='string'?{image_url:slide}:((slide&&typeof slide==='object')?slide:{}));
-      const slideWrap=$('<div class="ark-slide-editor"><div class="ark-slide-editor-head"><b>Slider images</b><span>'+s.items.length+' slides</span></div></div>');
-      s.items.forEach((slide,index)=>{
-        const item=slide||{};
-        const card=$('<div class="ark-slide-item"></div>');
-        $('<div class="ark-slide-index"></div>').text('SLIDE '+(index+1)).appendTo(card);
-        const imageInput=$('<input type="url" placeholder="Image URL">').val(item.image_url||'');
-        imageInput.on('input change',function(){
-          const nextUrl=$(this).val().trim();
-          if(nextUrl!==item.image_url)item.attachment_id=0;
-          item.image_url=nextUrl;
-          markDirty();
-          renderPreview();
-        });
-        card.append(imageInput);
-        const pick=$('<button type="button" class="ark-media-pick">Choose image</button>');
-        pick.on('click',function(){
-          const frame=wp.media({title:'Choose slider image',button:{text:'Use image'},multiple:false,library:{type:'image'}});
-          frame.on('select',function(){
-            const media=frame.state().get('selection').first().toJSON();
-            item.image_url=media.url;
-            item.attachment_id=Number(media.id)||0;
-            imageInput.val(media.url);
-            markDirty();
-            renderPreview();
-          });
-          frame.open();
-        });
-        card.append(pick);
-        const titleInput=$('<input type="text" placeholder="Slide title (optional)">').val(item.title||'');
-        titleInput.on('input',function(){item.title=$(this).val();markDirty();});
-        card.append(titleInput);
-        const linkMode=$('<select><option value="in_app">In-app page / product</option><option value="deeplink">Deep link</option><option value="chrome">Open in Chrome</option></select>').val(item.link_type||'chrome');
-        linkMode.on('change',function(){item.link_type=$(this).val();markDirty();renderInspector();});
-        card.append(linkMode);
-        if((item.link_type||'chrome')==='in_app'){
-          card.append(inAppTargetField('Slide destination',item.link||'',value=>{
-            item.link=value;markDirty();
-          }));
-        }else{
-          const linkInput=$('<input type="text" placeholder="Enter deep link or HTTPS URL">').val(item.link||'');
-          linkInput.on('input',function(){item.link=$(this).val();markDirty();});
-          card.append(linkInput);
-        }
-        $('<button type="button" class="ark-slide-remove">Remove slide</button>').on('click',function(){s.items.splice(index,1);markDirty();renderInspector();renderPreview();}).appendTo(card);
-        slideWrap.append(card);
-      });
-      $('<button type="button" class="ark-slide-add">＋ Add another slide</button>').on('click',function(){
-        s.items.push({image_url:'',title:'',link:'',link_type:'in_app'});markDirty();renderInspector();
-      }).appendTo(slideWrap);
-      $('<button type="button" class="ark-slide-add ark-slide-add-media">＋ Add multiple from Media Library</button>').on('click',function(){
-        const frame=wp.media({title:'Add slider images',button:{text:'Add selected images'},multiple:true,library:{type:'image'}});
-        frame.on('select',function(){
-          frame.state().get('selection').each(function(attachment){
-            const media=attachment.toJSON();
-            if(media.url)s.items.push({image_url:media.url,attachment_id:Number(media.id)||0,title:media.title||'',link:'',link_type:'in_app'});
-          });
-          markDirty();
-          renderInspector();
-          renderPreview();
-        });
-        frame.open();
-      }).appendTo(slideWrap);
-      $inspector.append(slideWrap);
-    }
+    if(s.type==='ark_live_slider')renderLiveSliderInspector(s);
+
     $inspector.append(field('Visible in app','visible',s.visible!==false,'checkbox'));
   }
   function loadLivePreview(){
@@ -751,7 +850,7 @@ jQuery(function($){
     const id='section-'+Date.now();
     const defaults={id,type,visible:true,title:ARKDesigner.components[type]?.label||type};
     if(['product_grid','product_carousel','recently_viewed','category_grid'].includes(type))Object.assign(defaults,{limit:8,columns:2,source:'latest',card_width:.46,card_ratio:.66});
-    if(type==='banner_slider')Object.assign(defaults,{height:178,interval_ms:3500,animation_ms:450,card_width:.92,slide_gap:8,fit:'cover',show_dots:true,show_arrows:false,items:[]});
+    if(type==='ark_live_slider')Object.assign(defaults,{slider_key:'slider-'+id,tap_link_type:'in_app'});
     if(type==='product_gallery')Object.assign(defaults,{gallery_height:390,gallery_fit:'contain',auto_slide:true,auto_slide_interval_ms:4200,show_dots:true,allow_zoom:true,show_wishlist:true,show_share:true,action_layout:'vertical',action_button_size:44,action_icon_size:21,action_gap:9,action_offset_top:14,action_offset_right:14,action_background:'#FFFFFF',action_icon_color:'#263248'});
     if(type==='product_recommended')Object.assign(defaults,{promo_autoplay:true,promo_interval_ms:4000,promo_card_height:112,promo_card_width:238,promo_image_size:72,show_ad_badge:true,ad_label:'AD',show_discount:true,show_original_price:true});
     if(type==='search')Object.assign(defaults,{placeholder:'Search products...',hints:['Search Watch','Search TV','Search Plugin'],hint_interval_ms:2200});
@@ -792,12 +891,8 @@ jQuery(function($){
       if(!pageData || !Array.isArray(pageData.sections)) throw new Error('Page '+pageKey+' has an invalid component list.');
       pageData.sections.forEach((section,index)=>{
         if(!section || !allowed.has(section.type)) throw new Error('Unknown component on '+pageKey+' at position '+(index+1)+'.');
-        if(section.type==='banner_slider' && publish){
-          const slides=Array.isArray(section.items)?section.items:[];
-          slides.forEach((slide,i)=>{
-            const imageUrl=String(slide?.image_url||'').trim();
-            if(imageUrl && !/^https?:\/\//i.test(imageUrl)) throw new Error('Image Slider on '+pageKey+' has an invalid image URL at slide '+(i+1)+'.');
-          });
+        if(section.type==='ark_live_slider' && !/^[a-z0-9_-]{1,64}$/i.test(String(section.slider_key||''))) {
+          throw new Error('Live Slider on '+pageKey+' needs a valid Slider ID.');
         }
       });
     }
@@ -806,7 +901,9 @@ jQuery(function($){
   function save(publish){
     try{validateConfig(publish);}catch(error){toast(error.message,true);return;}
     const button=publish?$('#ark-publish'):$('#ark-save-draft');button.prop('disabled',true).text('Saving…');
-    request(publish?'studio/publish':'studio/draft','POST',state.config).then(result=>{
+    saveDirtyLiveSliders().then(()=>{
+      return request(publish?'studio/publish':'studio/draft','POST',state.config);
+    }).then(result=>{
       state.config.version=result.version||state.config.version;state.config.updated_at=result.updated_at||state.config.updated_at;state.dirty=false;
       $('#ark-version-label').text(publish?'Published v'+state.config.version:'Draft saved');
       toast(publish?'Published to all supported app clients.':'Draft saved.');

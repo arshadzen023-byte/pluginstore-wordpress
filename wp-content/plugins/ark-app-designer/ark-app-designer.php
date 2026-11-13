@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Designer
  * Description: Server-driven visual app designer for ARK Native / GlowHit Flutter apps, including live layout, navigation, theme and in-app splash configuration.
- * Version: 1.7.4
+ * Version: 1.8.0
  * Author: ARK
  * Requires PHP: 7.4
  */
@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class ARK_App_Designer {
-    const VERSION = '1.7.4';
+    const VERSION = '1.8.0';
     const PUBLISHED = 'ark_app_designer_published';
     const DRAFT = 'ark_app_designer_draft';
     const REVISIONS = 'ark_app_designer_revisions';
@@ -21,6 +21,7 @@ final class ARK_App_Designer {
         add_action('admin_menu', [$this, 'admin_menu']);
         add_action('admin_enqueue_scripts', [$this, 'admin_assets']);
         add_action('rest_api_init', [$this, 'register_routes']);
+        add_action('init', [$this, 'maybe_upgrade_schema'], 5);
         if (get_option(self::PUBLISHED, null) === null) {
             update_option(self::PUBLISHED, self::default_config(), false);
         }
@@ -33,6 +34,8 @@ final class ARK_App_Designer {
         if (get_option(self::DRAFT, null) === null) {
             update_option(self::DRAFT, self::default_config(), false);
         }
+        self::create_live_slider_tables();
+        update_option('ark_app_designer_live_slider_schema', 1, false);
     }
 
     public static function default_config() {
@@ -92,7 +95,7 @@ final class ARK_App_Designer {
             'pages' => [
                 'home' => ['title' => 'Home', 'sections' => [
                     ['id' => 'home-search', 'type' => 'search', 'visible' => true, 'title' => 'Search products', 'placeholder' => 'Search products...'],
-                    ['id' => 'home-hero', 'type' => 'banner_slider', 'visible' => true, 'title' => 'Featured', 'height' => 178, 'items' => []],
+                    ['id' => 'home-hero', 'type' => 'ark_live_slider', 'slider_key' => 'home-hero', 'visible' => true, 'title' => 'Featured'],
                     ['id' => 'home-cats', 'type' => 'category_grid', 'visible' => true, 'title' => 'Shop by category', 'limit' => 8, 'columns' => 4, 'style' => 'rounded'],
                     ['id' => 'home-featured', 'type' => 'product_carousel', 'visible' => true, 'title' => 'Featured products', 'source' => 'featured', 'limit' => 10],
                     ['id' => 'home-offer', 'type' => 'offer_banner', 'visible' => true, 'title' => 'Special offers', 'subtitle' => 'Explore today’s best deals', 'button_label' => 'Shop now', 'button_url' => ''],
@@ -159,7 +162,7 @@ final class ARK_App_Designer {
             'notice_bar' => ['label' => 'Announcement strip', 'icon' => '▰', 'description' => 'Compact store message with optional link'],
             'icon_grid' => ['label' => 'Icon shortcuts', 'icon' => '⊞', 'description' => 'Grid of icon links and quick actions'],
             'countdown' => ['label' => 'Countdown card', 'icon' => '◷', 'description' => 'Live countdown to a selected deadline'],
-            'banner_slider' => ['label' => 'Image slider', 'icon' => '▧', 'description' => 'Clickable promotional image carousel'],
+            'ark_live_slider' => ['label' => 'ARK Live Slider', 'icon' => '▧', 'description' => 'SQL-managed image campaigns with native links and scheduled slides'],
             'category_grid' => ['label' => 'Category grid', 'icon' => '▦', 'description' => 'Live WooCommerce categories'],
             'product_carousel' => ['label' => 'Product slider', 'icon' => '▤', 'description' => 'Featured, latest, sale or category products'],
             'product_grid' => ['label' => 'Product grid', 'icon' => '▦', 'description' => 'Responsive product cards'],
@@ -189,7 +192,330 @@ final class ARK_App_Designer {
         ];
     }
 
+
+    private static function live_slider_tables() {
+        global $wpdb;
+        return [
+            $wpdb->prefix . 'ark_live_sliders',
+            $wpdb->prefix . 'ark_live_slider_items',
+        ];
+    }
+
+    private static function create_live_slider_tables() {
+        global $wpdb;
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        [$sliders, $items] = self::live_slider_tables();
+        $charset = $wpdb->get_charset_collate();
+        dbDelta("CREATE TABLE {$sliders} (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            slider_key varchar(64) NOT NULL,
+            title varchar(191) NOT NULL DEFAULT '',
+            enabled tinyint(1) NOT NULL DEFAULT 1,
+            autoplay tinyint(1) NOT NULL DEFAULT 1,
+            interval_ms int(10) unsigned NOT NULL DEFAULT 3500,
+            loop_slides tinyint(1) NOT NULL DEFAULT 1,
+            transition varchar(12) NOT NULL DEFAULT 'slide',
+            height_px smallint(5) unsigned NOT NULL DEFAULT 178,
+            image_fit varchar(12) NOT NULL DEFAULT 'cover',
+            card_width decimal(4,2) NOT NULL DEFAULT 1.00,
+            slide_gap smallint(5) unsigned NOT NULL DEFAULT 8,
+            show_arrows tinyint(1) NOT NULL DEFAULT 0,
+            pagination varchar(12) NOT NULL DEFAULT 'dots',
+            pause_on_interaction tinyint(1) NOT NULL DEFAULT 1,
+            radius smallint(5) unsigned NOT NULL DEFAULT 16,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY  (id),
+            UNIQUE KEY slider_key (slider_key)
+        ) {$charset};");
+        dbDelta("CREATE TABLE {$items} (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            slider_key varchar(64) NOT NULL,
+            attachment_id bigint(20) unsigned NOT NULL DEFAULT 0,
+            image_url text NOT NULL,
+            image_srcset text NULL,
+            title varchar(191) NOT NULL DEFAULT '',
+            subtitle text NULL,
+            alt_text varchar(191) NOT NULL DEFAULT '',
+            button_label varchar(80) NOT NULL DEFAULT '',
+            link_type varchar(16) NOT NULL DEFAULT 'in_app',
+            link_value text NULL,
+            active tinyint(1) NOT NULL DEFAULT 1,
+            sort_order int(10) unsigned NOT NULL DEFAULT 0,
+            starts_at datetime NULL DEFAULT NULL,
+            ends_at datetime NULL DEFAULT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY  (id),
+            KEY slider_order (slider_key, sort_order),
+            KEY slider_active (slider_key, active)
+        ) {$charset};");
+    }
+
+    public function maybe_upgrade_schema() {
+        if (absint(get_option('ark_app_designer_live_slider_schema', 0)) >= 1) return;
+        self::create_live_slider_tables();
+        $this->migrate_legacy_banner_sliders();
+        update_option('ark_app_designer_live_slider_schema', 1, false);
+    }
+
+    private function live_slider_defaults() {
+        return [
+            'enabled' => 1, 'autoplay' => 1, 'interval_ms' => 3500,
+            'loop_slides' => 1, 'transition' => 'slide', 'height_px' => 178,
+            'image_fit' => 'cover', 'card_width' => 1.00, 'slide_gap' => 8,
+            'show_arrows' => 0, 'pagination' => 'dots',
+            'pause_on_interaction' => 1, 'radius' => 16,
+        ];
+    }
+
+    private function normalize_slider_datetime($value) {
+        $value = trim((string) $value);
+        if ($value === '') return null;
+        try {
+            $date = new DateTimeImmutable($value, wp_timezone());
+            return $date->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+        } catch (Exception $error) {
+            return null;
+        }
+    }
+
+    private function normalize_slider_link($type, $value) {
+        $type = in_array($type, ['in_app','deeplink','chrome'], true) ? $type : 'in_app';
+        $value = trim((string) $value);
+        if ($type === 'chrome') return [$type, $this->clean_url($value)];
+        if ($type === 'in_app') {
+            if (preg_match('/^(page:(home|categories|product|account|wishlist|cart)|product:[0-9]+|category:[0-9]+)$/', $value)) {
+                return [$type, $value];
+            }
+            return [$type, ''];
+        }
+        return [$type, sanitize_text_field($value)];
+    }
+
+    private function save_live_slider_payload($slider_key, $settings, $slides) {
+        global $wpdb;
+        [$sliders, $items] = self::live_slider_tables();
+        $slider_key = sanitize_key($slider_key);
+        if ($slider_key === '' || strlen($slider_key) > 64) {
+            return new WP_Error('ark_slider_key', 'Slider ID is invalid.', ['status' => 400]);
+        }
+        if (!is_array($settings)) $settings = [];
+        if (!is_array($slides)) $slides = [];
+        if (count($slides) > 40) {
+            return new WP_Error('ark_slider_limit', 'Maximum 40 images per slider.', ['status' => 400]);
+        }
+
+        $defaults = $this->live_slider_defaults();
+        $row = [
+            'title' => sanitize_text_field($settings['title'] ?? 'Live Slider'),
+            'enabled' => !array_key_exists('enabled', $settings) || !empty($settings['enabled']) ? 1 : 0,
+            'autoplay' => !array_key_exists('autoplay', $settings) || !empty($settings['autoplay']) ? 1 : 0,
+            'interval_ms' => min(20000, max(1000, absint($settings['interval_ms'] ?? $defaults['interval_ms']))),
+            'loop_slides' => !array_key_exists('loop_slides', $settings) || !empty($settings['loop_slides']) ? 1 : 0,
+            'transition' => in_array(($settings['transition'] ?? 'slide'), ['slide','fade','zoom'], true) ? ($settings['transition'] ?? 'slide') : 'slide',
+            'height_px' => min(600, max(80, absint($settings['height_px'] ?? $defaults['height_px']))),
+            'image_fit' => in_array(($settings['image_fit'] ?? 'cover'), ['cover','contain','fill'], true) ? ($settings['image_fit'] ?? 'cover') : 'cover',
+            'card_width' => min(1.00, max(0.45, (float) ($settings['card_width'] ?? $defaults['card_width']))),
+            'slide_gap' => min(32, max(0, absint($settings['slide_gap'] ?? $defaults['slide_gap']))),
+            'show_arrows' => !empty($settings['show_arrows']) ? 1 : 0,
+            'pagination' => in_array(($settings['pagination'] ?? 'dots'), ['dots','progress','none'], true) ? ($settings['pagination'] ?? 'dots') : 'dots',
+            'pause_on_interaction' => !array_key_exists('pause_on_interaction', $settings) || !empty($settings['pause_on_interaction']) ? 1 : 0,
+            'radius' => min(60, max(0, absint($settings['radius'] ?? $defaults['radius']))),
+            'updated_at' => current_time('mysql', true),
+        ];
+
+        $wpdb->query('START TRANSACTION');
+        $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$sliders} WHERE slider_key = %s", $slider_key));
+        if ($exists) {
+            $saved = $wpdb->update($sliders, $row, ['slider_key' => $slider_key]);
+        } else {
+            $row['slider_key'] = $slider_key;
+            $saved = $wpdb->insert($sliders, $row);
+        }
+        if ($saved === false) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('ark_slider_save', 'Slider settings could not be saved.', ['status' => 500]);
+        }
+
+        $wpdb->delete($items, ['slider_key' => $slider_key], ['%s']);
+        foreach (array_values($slides) as $index => $slide) {
+            if (!is_array($slide)) continue;
+            $attachment_id = absint($slide['attachment_id'] ?? 0);
+            $image_url = '';
+            $srcset = '';
+            if ($attachment_id > 0 && wp_attachment_is_image($attachment_id)) {
+                $image_url = wp_get_attachment_image_url($attachment_id, 'large') ?: wp_get_attachment_url($attachment_id);
+                $srcset = wp_get_attachment_image_srcset($attachment_id, 'large') ?: '';
+            } else {
+                $image_url = $this->clean_url($slide['image_url'] ?? '');
+            }
+            if (!$image_url) continue;
+            [$link_type, $link_value] = $this->normalize_slider_link(
+                $slide['link_type'] ?? 'in_app',
+                $slide['link_value'] ?? $slide['link'] ?? ''
+            );
+            $start = $this->normalize_slider_datetime($slide['starts_at'] ?? '');
+            $end = $this->normalize_slider_datetime($slide['ends_at'] ?? '');
+            $alt = sanitize_text_field($slide['alt_text'] ?? '');
+            if ($alt === '' && $attachment_id > 0) {
+                $alt = sanitize_text_field(get_post_meta($attachment_id, '_wp_attachment_image_alt', true));
+            }
+            $inserted = $wpdb->insert($items, [
+                'slider_key' => $slider_key,
+                'attachment_id' => $attachment_id,
+                'image_url' => esc_url_raw($image_url),
+                'image_srcset' => $srcset,
+                'title' => sanitize_text_field($slide['title'] ?? ''),
+                'subtitle' => sanitize_textarea_field($slide['subtitle'] ?? ''),
+                'alt_text' => $alt,
+                'button_label' => sanitize_text_field($slide['button_label'] ?? ''),
+                'link_type' => $link_type,
+                'link_value' => $link_value,
+                'active' => !array_key_exists('active', $slide) || !empty($slide['active']) ? 1 : 0,
+                'sort_order' => $index,
+                'starts_at' => $start,
+                'ends_at' => $end,
+                'updated_at' => current_time('mysql', true),
+            ]);
+            if ($inserted === false) {
+                $wpdb->query('ROLLBACK');
+                return new WP_Error('ark_slider_save', 'A slider image could not be saved.', ['status' => 500]);
+            }
+        }
+        $wpdb->query('COMMIT');
+        return ['slider_key' => $slider_key, 'saved_slides' => count($slides)];
+    }
+
+    private function get_live_slider_payload($slider_key, $public = false) {
+        global $wpdb;
+        [$sliders, $items] = self::live_slider_tables();
+        $slider_key = sanitize_key($slider_key);
+        $saved = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$sliders} WHERE slider_key = %s", $slider_key), ARRAY_A);
+        $settings = $saved ?: array_merge(['title' => 'Live Slider'], $this->live_slider_defaults());
+        $where = "slider_key = %s";
+        if ($public) {
+            $where .= " AND active = 1 AND (starts_at IS NULL OR starts_at <= UTC_TIMESTAMP()) AND (ends_at IS NULL OR ends_at >= UTC_TIMESTAMP())";
+        }
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$items} WHERE {$where} ORDER BY sort_order ASC, id ASC", $slider_key), ARRAY_A);
+        $slides = [];
+        foreach ($rows as $item) {
+            $slides[] = [
+                'id' => (int) $item['id'],
+                'attachment_id' => (int) $item['attachment_id'],
+                'image_url' => esc_url_raw($item['image_url']),
+                'image_srcset' => (string) $item['image_srcset'],
+                'title' => (string) $item['title'],
+                'subtitle' => (string) $item['subtitle'],
+                'alt_text' => (string) $item['alt_text'],
+                'button_label' => (string) $item['button_label'],
+                'link_type' => (string) $item['link_type'],
+                'link_value' => (string) $item['link_value'],
+                'active' => (bool) $item['active'],
+                'starts_at' => $item['starts_at'],
+                'ends_at' => $item['ends_at'],
+            ];
+        }
+        return [
+            'slider_key' => $slider_key,
+            'settings' => [
+                'title' => (string) ($settings['title'] ?? 'Live Slider'),
+                'enabled' => (bool) ($settings['enabled'] ?? 1),
+                'autoplay' => (bool) ($settings['autoplay'] ?? 1),
+                'interval_ms' => (int) ($settings['interval_ms'] ?? 3500),
+                'loop_slides' => (bool) ($settings['loop_slides'] ?? 1),
+                'transition' => (string) ($settings['transition'] ?? 'slide'),
+                'height_px' => (int) ($settings['height_px'] ?? 178),
+                'image_fit' => (string) ($settings['image_fit'] ?? 'cover'),
+                'card_width' => (float) ($settings['card_width'] ?? 1),
+                'slide_gap' => (int) ($settings['slide_gap'] ?? 8),
+                'show_arrows' => (bool) ($settings['show_arrows'] ?? 0),
+                'pagination' => (string) ($settings['pagination'] ?? 'dots'),
+                'pause_on_interaction' => (bool) ($settings['pause_on_interaction'] ?? 1),
+                'radius' => (int) ($settings['radius'] ?? 16),
+                'updated_at' => (string) ($settings['updated_at'] ?? ''),
+            ],
+            'slides' => $slides,
+        ];
+    }
+
+    private function migrate_legacy_banner_sliders() {
+        foreach ([self::PUBLISHED, self::DRAFT] as $option) {
+            $config = get_option($option, []);
+            if (!is_array($config) || !is_array($config['pages'] ?? null)) continue;
+            $changed = false;
+            foreach ($config['pages'] as $page_key => &$page) {
+                if (!is_array($page) || !is_array($page['sections'] ?? null)) continue;
+                foreach ($page['sections'] as &$section) {
+                    if (!is_array($section) || ($section['type'] ?? '') !== 'banner_slider') continue;
+                    $slider_key = sanitize_key($section['slider_key'] ?? $section['id'] ?? ('legacy-' . $page_key));
+                    if ($option === self::PUBLISHED) {
+                        $legacy_slides = $section['items'] ?? $section['slides'] ?? $section['images'] ?? [];
+                        $legacy_settings = [
+                            'title' => $section['title'] ?? 'Live Slider',
+                            'height_px' => $section['height'] ?? 178,
+                            'interval_ms' => $section['interval_ms'] ?? 3500,
+                            'autoplay' => $section['autoplay'] ?? true,
+                            'loop_slides' => true,
+                            'transition' => 'slide',
+                            'image_fit' => $section['fit'] ?? 'cover',
+                            'show_arrows' => $section['show_arrows'] ?? false,
+                            'pagination' => !empty($section['show_dots']) ? 'dots' : 'none',
+                        ];
+                        $this->save_live_slider_payload($slider_key, $legacy_settings, is_array($legacy_slides) ? $legacy_slides : []);
+                    }
+                    $section['type'] = 'ark_live_slider';
+                    $section['slider_key'] = $slider_key;
+                    unset($section['items'], $section['slides'], $section['images'], $section['image_url'], $section['button_url']);
+                    $changed = true;
+                }
+                unset($section);
+            }
+            unset($page);
+            if ($changed) update_option($option, $config, false);
+        }
+    }
+
+    public function api_studio_live_slider($request) {
+        return rest_ensure_response($this->get_live_slider_payload($request['slider_key'], false));
+    }
+
+    public function api_save_live_slider($request) {
+        $body = $request->get_json_params();
+        if (!is_array($body)) return new WP_Error('ark_slider_payload', 'Slider data is invalid.', ['status' => 400]);
+        $saved = $this->save_live_slider_payload(
+            $request['slider_key'],
+            $body['settings'] ?? [],
+            $body['slides'] ?? []
+        );
+        if (is_wp_error($saved)) return $saved;
+        return rest_ensure_response(['success' => true] + $saved);
+    }
+
+    public function api_public_live_slider($request) {
+        $payload = $this->get_live_slider_payload($request['slider_key'], true);
+        if (!$payload['settings']['enabled']) $payload['slides'] = [];
+        $response = rest_ensure_response($payload);
+        $response->header('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+        return $response;
+    }
+
     public function register_routes() {
+        register_rest_route(self::REST_NAMESPACE, '/sliders/(?P<slider_key>[a-zA-Z0-9_-]+)', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [$this, 'api_public_live_slider'],
+            'permission_callback' => '__return_true',
+        ]);
+        register_rest_route(self::REST_NAMESPACE, '/studio/sliders/(?P<slider_key>[a-zA-Z0-9_-]+)', [
+            [
+                'methods' => WP_REST_Server::READABLE,
+                'callback' => [$this, 'api_studio_live_slider'],
+                'permission_callback' => [$this, 'can_design'],
+            ],
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'api_save_live_slider'],
+                'permission_callback' => [$this, 'can_design'],
+            ],
+        ]);
         register_rest_route(self::REST_NAMESPACE, '/config', [
             'methods' => WP_REST_Server::READABLE,
             'callback' => [$this, 'api_config'],
@@ -260,9 +586,10 @@ final class ARK_App_Designer {
     /** Return real native page and WooCommerce product destinations for slider links. */
     public function api_studio_targets($request) {
         $products = [];
+        $categories = [];
         if (function_exists('wc_get_products')) {
             $found = wc_get_products([
-                'status' => 'publish', 'limit' => 500, 'orderby' => 'title',
+                'status' => 'publish', 'limit' => 250, 'orderby' => 'title',
                 'order' => 'ASC', 'return' => 'objects',
             ]);
             foreach ($found as $product) {
@@ -270,6 +597,14 @@ final class ARK_App_Designer {
                     'id' => (int) $product->get_id(),
                     'name' => wp_strip_all_tags($product->get_name()),
                 ];
+            }
+        }
+        if (function_exists('get_terms')) {
+            $terms = get_terms(['taxonomy' => 'product_cat', 'hide_empty' => false, 'number' => 250]);
+            if (!is_wp_error($terms)) {
+                foreach ($terms as $term) {
+                    $categories[] = ['id' => (int) $term->term_id, 'name' => $term->name];
+                }
             }
         }
         return rest_ensure_response([
@@ -282,6 +617,7 @@ final class ARK_App_Designer {
                 ['value' => 'page:cart', 'label' => 'Cart page'],
             ],
             'products' => $products,
+            'categories' => $categories,
         ]);
     }
 
@@ -366,6 +702,7 @@ final class ARK_App_Designer {
             foreach ($sections as $section) {
                 if (!is_array($section)) continue;
                 $type = sanitize_key($section['type'] ?? '');
+                if ($type === 'banner_slider') $type = 'ark_live_slider';
                 if (!isset(self::component_catalog()[$type])) continue;
                 $item = $this->clean_value($section);
                 $item['id'] = sanitize_key($section['id'] ?? wp_generate_uuid4());
@@ -378,6 +715,10 @@ final class ARK_App_Designer {
                 $tap_value = (string) ($section['tap_url'] ?? '');
                 $item['tap_url'] = $tap_mode === 'chrome'
                     ? $this->clean_url($tap_value) : sanitize_text_field($tap_value);
+                if ($type === 'ark_live_slider') {
+                    $item['slider_key'] = sanitize_key($section['slider_key'] ?? $section['id'] ?? wp_generate_uuid4());
+                    unset($item['items'], $item['slides'], $item['images'], $item['image_url'], $item['button_url']);
+                }
                 foreach (['width_pct' => [10, 100], 'height_px' => [0, 2000], 'min_height_px' => [0, 2000], 'max_width_px' => [0, 2000], 'padding_top' => [0, 120], 'padding_right' => [0, 120], 'padding_bottom' => [0, 120], 'padding_left' => [0, 120], 'margin_top' => [0, 120], 'margin_right' => [0, 120], 'margin_bottom' => [0, 120], 'margin_left' => [0, 120], 'corner_radius' => [0, 60]] as $layout_key => $range) {
                     if (isset($section[$layout_key])) $item[$layout_key] = min($range[1], max($range[0], (float) $section[$layout_key]));
                 }
@@ -438,7 +779,7 @@ final class ARK_App_Designer {
                 }
                 // Store every slider image in the canonical native payload. An
                 // explicitly empty items list means the admin removed all slides.
-                if ($type === 'banner_slider') {
+                if ($type === '__legacy_banner_slider_disabled') {
                     if (array_key_exists('items', $section)) {
                         $slides = $section['items'];
                     } else {
