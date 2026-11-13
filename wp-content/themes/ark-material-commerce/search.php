@@ -1,3 +1,0 @@
-<?php get_header(); ?><h1 class="ark-page-title"><?php printf(esc_html__('Search results for: %s','ark-material-commerce'), '<span>'.esc_html(get_search_query()).'</span>'); ?></h1>
-<?php if (have_posts()) : while (have_posts()) : the_post(); ?><article <?php post_class('ark-card'); ?> style="padding:18px;margin-bottom:14px"><h2><a href="<?php the_permalink(); ?>"><?php the_title(); ?></a></h2><p><?php echo esc_html(wp_trim_words(get_the_excerpt(), 30)); ?></p></article><?php endwhile; the_posts_pagination(); else : ?><div class="ark-no-results"><p><?php esc_html_e('No results found.','ark-material-commerce'); ?></p><?php get_search_form(); ?></div><?php endif; ?>
-<?php get_footer(); ?>
