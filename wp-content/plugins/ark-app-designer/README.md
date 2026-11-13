@@ -103,10 +103,19 @@ Server-driven changes can modify layout, content, themes, navigation labels, com
 - Published config fields are preserved and sanitized by the server.
 
 
-## Version 1.7.3 — Product page controls
+## Version 1.7.4 — Product page controls
 
 - Added product gallery auto-slide, image fit, pagination and full-screen zoom settings.
 - Added editable floating Wishlist/Share layout, button size, icon size, gap, offsets, background and icon colour.
 - Added Recommended Offers carousel controls for auto-slide, interval, card/image dimensions and sponsored AD badge.
 - Product gallery and offer settings are sanitized server-side with bounded numeric values and hex colours.
 - The mobile app renders remote product photos through HTTPS-only cached image loading; page transitions and zoom are native Flutter widgets.
+
+
+## Version 1.7.4 — Image Slider persistence and native tap destinations
+
+- Image Slider slides keep both the WordPress Media Library attachment ID and canonical image URL in saved/published configuration.
+- Explicitly removed slides remain removed after refresh; empty sliders can be saved without restoring stale legacy data.
+- The common Tap action editor offers native page and published product destinations; deep links and HTTPS website links remain selectable.
+- Delivery card settings are normalized and published for the native app renderer.
+- Product Description preview length defaults to 80 words; the native renderer reveals the full text and embedded images when expanded.

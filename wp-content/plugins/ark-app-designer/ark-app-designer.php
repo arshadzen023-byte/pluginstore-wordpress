@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Designer
  * Description: Server-driven visual app designer for ARK Native / GlowHit Flutter apps, including live layout, navigation, theme and in-app splash configuration.
- * Version: 1.7.3
+ * Version: 1.7.4
  * Author: ARK
  * Requires PHP: 7.4
  */
@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class ARK_App_Designer {
-    const VERSION = '1.7.3';
+    const VERSION = '1.7.4';
     const PUBLISHED = 'ark_app_designer_published';
     const DRAFT = 'ark_app_designer_draft';
     const REVISIONS = 'ark_app_designer_revisions';
@@ -372,11 +372,12 @@ final class ARK_App_Designer {
                 $item['type'] = $type;
                 $item['visible'] = !array_key_exists('visible', $section) || (bool) $section['visible'];
                 if (isset($section['image_url'])) $item['image_url'] = $this->clean_url($section['image_url']);
-                if (isset($section['tap_url'])) {
-                    $tap_mode = in_array(($section['tap_link_type'] ?? 'in_app'), ['in_app','deeplink','chrome'], true) ? ($section['tap_link_type'] ?? 'in_app') : 'in_app';
-                    $item['tap_link_type'] = $tap_mode;
-                    $item['tap_url'] = $tap_mode === 'chrome' ? $this->clean_url($section['tap_url']) : sanitize_text_field($section['tap_url']);
-                }
+                $tap_mode = in_array(($section['tap_link_type'] ?? 'in_app'), ['in_app','deeplink','chrome'], true)
+                    ? ($section['tap_link_type'] ?? 'in_app') : 'in_app';
+                $item['tap_link_type'] = $tap_mode;
+                $tap_value = (string) ($section['tap_url'] ?? '');
+                $item['tap_url'] = $tap_mode === 'chrome'
+                    ? $this->clean_url($tap_value) : sanitize_text_field($tap_value);
                 foreach (['width_pct' => [10, 100], 'height_px' => [0, 2000], 'min_height_px' => [0, 2000], 'max_width_px' => [0, 2000], 'padding_top' => [0, 120], 'padding_right' => [0, 120], 'padding_bottom' => [0, 120], 'padding_left' => [0, 120], 'margin_top' => [0, 120], 'margin_right' => [0, 120], 'margin_bottom' => [0, 120], 'margin_left' => [0, 120], 'corner_radius' => [0, 60]] as $layout_key => $range) {
                     if (isset($section[$layout_key])) $item[$layout_key] = min($range[1], max($range[0], (float) $section[$layout_key]));
                 }
@@ -386,6 +387,19 @@ final class ARK_App_Designer {
                 unset($item['card_animation']);
                 $item['background_motion'] = in_array(($section['background_motion'] ?? 'none'), ['none','pulse','gradient','shimmer','glow'], true) ? ($section['background_motion'] ?? 'none') : 'none';
                 if (isset($section['card_design'])) $item['card_design'] = in_array($section['card_design'], ['flipkart','classic','elevated','glass','compact','minimal'], true) ? $section['card_design'] : 'flipkart';
+                if ($type === 'product_delivery') {
+                    $item['delivery_style'] = in_array(($section['delivery_style'] ?? 'standard'), ['compact','standard'], true)
+                        ? ($section['delivery_style'] ?? 'standard') : 'standard';
+                    $item['show_delivery_details'] = !array_key_exists('show_delivery_details', $section) || (bool) $section['show_delivery_details'];
+                    $item['show_pin_badge'] = !array_key_exists('show_pin_badge', $section) || (bool) $section['show_pin_badge'];
+                    $item['delivery_title'] = sanitize_text_field($section['delivery_title'] ?? 'Delivery information');
+                    $item['delivery_subtitle'] = sanitize_text_field($section['delivery_subtitle'] ?? 'Check delivery availability at your address.');
+                    $item['delivery_background'] = sanitize_hex_color($section['delivery_background'] ?? '') ?: '#F8FAFD';
+                }
+                if ($type === 'product_description') {
+                    $item['expanded'] = !empty($section['expanded']);
+                    $item['preview_words'] = 80;
+                }
                 if ($type === 'address_selector') {
                     $item['show_phone'] = !array_key_exists('show_phone', $section) || (bool) $section['show_phone'];
                     $item['show_city_pin'] = !array_key_exists('show_city_pin', $section) || (bool) $section['show_city_pin'];
@@ -422,12 +436,16 @@ final class ARK_App_Designer {
                     $item['destination_link_type'] = $dest_mode;
                     $item['destination_url'] = $dest_mode === 'chrome' ? $this->clean_url($section['destination_url']) : sanitize_text_field($section['destination_url']);
                 }
-                // Normalize legacy and current slider payloads to image_url.
-                $slides = $section['items'] ?? $section['slides'] ?? $section['images'] ?? [];
-                // Some editor/API versions serialize a single slide as an object,
-                // while others send a list. Normalize both without losing slides.
-                if (is_array($slides)) {
-                    $is_list = array_keys($slides) === range(0, count($slides) - 1);
+                // Store every slider image in the canonical native payload. An
+                // explicitly empty items list means the admin removed all slides.
+                if ($type === 'banner_slider') {
+                    if (array_key_exists('items', $section)) {
+                        $slides = $section['items'];
+                    } else {
+                        $slides = $section['slides'] ?? $section['images'] ?? [];
+                    }
+                    if (!is_array($slides)) $slides = [];
+                    $is_list = $slides === [] || array_keys($slides) === range(0, count($slides) - 1);
                     if (!$is_list && (isset($slides['image_url']) || isset($slides['image']) || isset($slides['src']) || isset($slides['url']) || isset($slides['media_url']))) {
                         $slides = [$slides];
                     } elseif (!$is_list && isset($slides['items']) && is_array($slides['items'])) {
@@ -439,19 +457,43 @@ final class ARK_App_Designer {
                     foreach (array_slice($slides, 0, 20) as $slide) {
                         if (is_string($slide)) $slide = ['image_url' => $slide];
                         if (!is_array($slide)) continue;
-                        $image_value = $slide['image_url'] ?? $slide['image'] ?? $slide['src'] ?? $slide['url'] ?? $slide['media_url'] ?? $slide['attachment_url'] ?? $slide['source_url'] ?? '';
-                        if (is_array($image_value)) $image_value = $image_value['url'] ?? $image_value['src'] ?? $image_value['source_url'] ?? '';
+                        $attachment_id = absint($slide['attachment_id'] ?? $slide['id'] ?? 0);
+                        $image_value = '';
+                        foreach (['image_url','image','src','url','media_url','attachment_url','source_url'] as $candidate) {
+                            if (isset($slide[$candidate]) && $slide[$candidate] !== '') {
+                                $image_value = $slide[$candidate];
+                                break;
+                            }
+                        }
+                        if (is_array($image_value)) {
+                            $image_value = $image_value['url'] ?? $image_value['src'] ?? $image_value['source_url'] ?? '';
+                        }
                         $image_url = $this->clean_url($image_value);
+                        if ($image_url === '' && $attachment_id > 0 && function_exists('wp_get_attachment_url')) {
+                            $image_url = $this->clean_url(wp_get_attachment_url($attachment_id));
+                        }
                         if ($image_url === '') continue;
-                        $mode = in_array(($slide['link_type'] ?? 'chrome'), ['in_app','deeplink','chrome'], true) ? ($slide['link_type'] ?? 'chrome') : 'chrome';
+                        $mode = in_array(($slide['link_type'] ?? 'chrome'), ['in_app','deeplink','chrome'], true)
+                            ? ($slide['link_type'] ?? 'chrome') : 'chrome';
                         $link_value = $slide['link'] ?? $slide['button_url'] ?? '';
                         $item['items'][] = [
                             'image_url' => $image_url,
+                            'attachment_id' => $attachment_id,
                             'title' => sanitize_text_field($slide['title'] ?? ''),
                             'link_type' => $mode,
                             'link' => $mode === 'chrome' ? $this->clean_url($link_value) : sanitize_text_field($link_value),
                         ];
                     }
+                    $item['height'] = min(600, max(80, absint($section['height'] ?? 178)));
+                    $item['card_width'] = min(1, max(0.45, (float) ($section['card_width'] ?? 0.92)));
+                    $item['interval_ms'] = min(30000, max(1000, absint($section['interval_ms'] ?? 3500)));
+                    $item['animation_ms'] = min(2000, max(150, absint($section['animation_ms'] ?? 450)));
+                    $item['slide_gap'] = min(32, max(0, absint($section['slide_gap'] ?? 8)));
+                    $item['autoplay'] = !array_key_exists('autoplay', $section) || (bool) $section['autoplay'];
+                    $item['show_dots'] = !array_key_exists('show_dots', $section) || (bool) $section['show_dots'];
+                    $item['show_arrows'] = !empty($section['show_arrows']);
+                    $item['fit'] = in_array(($section['fit'] ?? 'cover'), ['cover','contain','fill'], true)
+                        ? ($section['fit'] ?? 'cover') : 'cover';
                 }
                 if ($type === 'product_gallery') {
                     $item['gallery_height'] = min(600, max(220, absint($section['gallery_height'] ?? 390)));

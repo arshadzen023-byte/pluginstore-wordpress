@@ -7,7 +7,13 @@ jQuery(function($){
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const page=()=>state.config.pages[state.page]||(state.config.pages[state.page]={title:labels[state.page],sections:[]});
   const sections=()=>page().sections||(page().sections=[]);
-  function toast(msg,error){$('.ark-toast').remove();$('<div class="ark-toast"></div>').toggleClass('error',!!error).text(msg).appendTo('body');setTimeout(()=>$('.ark-toast').fadeOut(250,()=>$('.ark-toast').remove()),2600);}
+  function toast(msg,error){
+    $('.ark-toast').remove();
+    let text=String(msg??'');
+    if(text.length>150)text=text.slice(0,147)+'…';
+    $('<div class="ark-toast"></div>').toggleClass('error',!!error).text(text).appendTo('body');
+    setTimeout(()=>$('.ark-toast').fadeOut(250,()=>$('.ark-toast').remove()),2600);
+  }
   function markDirty(){state.dirty=true;$('#ark-version-label').text('Unsaved changes');}
   function renderPages(){
     $pages.empty();
@@ -234,6 +240,51 @@ jQuery(function($){
     if(hint)$('<div class="description"></div>').text(hint).appendTo(wrap);
     return wrap;
   }
+
+  function inAppTargetField(label,value,onChange,hint=''){
+    const wrap=$('<div class="ark-field"></div>');
+    $('<label></label>').text(label).appendTo(wrap);
+    const select=$('<select class="ark-inapp-target"></select>');
+    const current=String(value||'');
+    const fill=data=>{
+      select.empty().append($('<option></option>').val('').text('Select app page or product…'));
+      (data?.pages||[]).forEach(item=>{
+        select.append($('<option></option>').val(item.value).text(item.label));
+      });
+      const products=data?.products||[];
+      if(products.length){
+        const group=$('<optgroup label="WooCommerce products"></optgroup>');
+        products.forEach(item=>group.append($('<option></option>').val('product:'+item.id).text('#'+item.id+' · '+(item.name||'Product'))));
+        select.append(group);
+      }
+      if(current && !select.find('option').filter(function(){return $(this).val()===current;}).length){
+        select.append($('<option></option>').val(current).text('Saved destination: '+current));
+      }
+      select.val(current);
+    };
+    const defaults={
+      pages:[
+        {value:'page:home',label:'Home page'},
+        {value:'page:categories',label:'Categories page'},
+        {value:'page:product',label:'Product page'},
+        {value:'page:account',label:'Account page'},
+        {value:'page:wishlist',label:'Wishlist page'},
+        {value:'page:cart',label:'Cart page'}
+      ],
+      products:liveCache.products||[]
+    };
+    fill(liveCache.targets||defaults);
+    select.on('change',function(){onChange($(this).val());});
+    if(!liveCache.targets){
+      request('studio/targets','GET').then(data=>{
+        liveCache.targets=data;
+        fill(data);
+      }).catch(()=>{});
+    }
+    wrap.append(select);
+    if(hint)$('<div class="description"></div>').text(hint).appendTo(wrap);
+    return wrap;
+  }
   const sourceState={files:[],path:'',sha:'',branch:'',tokenSaved:false};
   function renderSourceEditor(){
     $('#ark-inspector-title').text('GitHub source files');
@@ -394,10 +445,24 @@ jQuery(function($){
     $inspector.append(choiceField('Background animation','background_motion',s.background_motion||'none',[
       ['none','Static'],['pulse','Soft pulse'],['gradient','Moving gradient'],['shimmer','Shimmer'],['glow','Glow']
     ]));
-    $inspector.append(choiceField('Tap action type','tap_link_type',s.tap_link_type||'in_app',[
-      ['in_app','In-app page / product'],['deeplink','App deep link'],['chrome','Open website']
-    ]));
-    $inspector.append(field('Tap action URL / target','tap_url',s.tap_url||'','text','Optional action for the whole component. Use page:home, page:cart or product:123 for in-app targets.'));
+    const tapMode=$('<div class="ark-field"><label>Tap action type</label><select><option value="in_app">In-app page / product</option><option value="deeplink">App deep link</option><option value="chrome">Open website</option></select></div>');
+    tapMode.find('select').val(s.tap_link_type||'in_app').on('change',function(){
+      s.tap_link_type=$(this).val();
+      markDirty();
+      renderInspector();
+    });
+    $inspector.append(tapMode);
+    if((s.tap_link_type||'in_app')==='in_app'){
+      $inspector.append(inAppTargetField('In-app destination',s.tap_url||'',value=>{
+        s.tap_url=value;markDirty();
+      },'Select a native page or published WooCommerce product.'));
+    }else{
+      $inspector.append(field(
+        'Tap action URL / deep link','tap_url',s.tap_url||'',
+        s.tap_link_type==='chrome'?'url':'text',
+        s.tap_link_type==='chrome'?'Enter an HTTPS website URL.':'Enter your app deep link.'
+      ));
+    }
     if(['product_grid','product_carousel','recently_viewed'].includes(s.type)){
       $inspector.append(choiceField('Product card design','card_design',s.card_design||'flipkart',[
         ['flipkart','Flipkart clean'],['classic','Classic'],['elevated','Elevated'],['glass','Soft glass'],['compact','Compact'],['minimal','Minimal']
@@ -498,7 +563,6 @@ jQuery(function($){
       ]));
     }
     if(s.type==='product_delivery'){
-      $inspector.append(field('Delivery card heading','delivery_title',s.delivery_title||'Delivery details'));
       $inspector.append(field('Delivery helper text','delivery_subtitle',s.delivery_subtitle||'Check delivery availability at your address.'));
     }
     if(s.type==='product_description'){
@@ -600,6 +664,7 @@ jQuery(function($){
       $inspector.append(field('Animation speed (ms)','animation_ms',s.animation_ms||450,'number'));
       $inspector.append(field('Slide gap (px)','slide_gap',s.slide_gap??8,'number'));
       $inspector.append(field('Auto-slide interval (ms)','interval_ms',s.interval_ms||3500,'number'));
+      $inspector.append(field('Auto-play slider','autoplay',s.autoplay!==false,'checkbox'));
       $inspector.append(choiceField('Image fit','fit',s.fit||'cover',[['cover','Cover'],['contain','Contain'],['fill','Stretch']]));
       $inspector.append(field('Show pagination dots','show_dots',s.show_dots!==false,'checkbox'));
       $inspector.append(field('Show arrows','show_arrows',s.show_arrows===true,'checkbox'));
@@ -611,12 +676,25 @@ jQuery(function($){
         const card=$('<div class="ark-slide-item"></div>');
         $('<div class="ark-slide-index"></div>').text('SLIDE '+(index+1)).appendTo(card);
         const imageInput=$('<input type="url" placeholder="Image URL">').val(item.image_url||'');
-        imageInput.on('input change',function(){item.image_url=$(this).val();markDirty();renderPreview();});
+        imageInput.on('input change',function(){
+          const nextUrl=$(this).val().trim();
+          if(nextUrl!==item.image_url)item.attachment_id=0;
+          item.image_url=nextUrl;
+          markDirty();
+          renderPreview();
+        });
         card.append(imageInput);
         const pick=$('<button type="button" class="ark-media-pick">Choose image</button>');
         pick.on('click',function(){
           const frame=wp.media({title:'Choose slider image',button:{text:'Use image'},multiple:false,library:{type:'image'}});
-          frame.on('select',function(){const media=frame.state().get('selection').first().toJSON();item.image_url=media.url;imageInput.val(media.url);markDirty();renderPreview();});
+          frame.on('select',function(){
+            const media=frame.state().get('selection').first().toJSON();
+            item.image_url=media.url;
+            item.attachment_id=Number(media.id)||0;
+            imageInput.val(media.url);
+            markDirty();
+            renderPreview();
+          });
           frame.open();
         });
         card.append(pick);
@@ -627,19 +705,9 @@ jQuery(function($){
         linkMode.on('change',function(){item.link_type=$(this).val();markDirty();renderInspector();});
         card.append(linkMode);
         if((item.link_type||'chrome')==='in_app'){
-          const target=$('<select class="ark-inapp-target"></select>');
-          target.append('<option value="">Select app page or product…</option>');
-          const addTargets=data=>{
-            target.find('option').not(':first').remove();target.find('optgroup').remove();
-            (data?.pages||[]).forEach(page=>target.append($('<option></option>').val(page.value).text(page.label)));
-            const productGroup=$('<optgroup label="WooCommerce products"></optgroup>');
-            (data?.products||[]).forEach(product=>productGroup.append($('<option></option>').val('product:'+product.id).text('#'+product.id+' · '+(product.name||'Product'))));
-            target.append(productGroup).val(item.link||'');
-          };
-          addTargets(liveCache.targets||{pages:[{value:'page:home',label:'Home page'},{value:'page:categories',label:'Categories page'},{value:'page:product',label:'Product page'},{value:'page:account',label:'Account page'},{value:'page:wishlist',label:'Wishlist page'},{value:'page:cart',label:'Cart page'}],products:liveCache.products||[]});
-          target.val(item.link||'').on('change',function(){item.link=$(this).val();markDirty();});
-          card.append(target);
-          if(!liveCache.targets){request('studio/targets','GET').then(data=>{liveCache.targets=data;addTargets(data);}).catch(()=>{});}
+          card.append(inAppTargetField('Slide destination',item.link||'',value=>{
+            item.link=value;markDirty();
+          }));
         }else{
           const linkInput=$('<input type="text" placeholder="Enter deep link or HTTPS URL">').val(item.link||'');
           linkInput.on('input',function(){item.link=$(this).val();markDirty();});
@@ -653,7 +721,15 @@ jQuery(function($){
       }).appendTo(slideWrap);
       $('<button type="button" class="ark-slide-add ark-slide-add-media">＋ Add multiple from Media Library</button>').on('click',function(){
         const frame=wp.media({title:'Add slider images',button:{text:'Add selected images'},multiple:true,library:{type:'image'}});
-        frame.on('select',function(){frame.state().get('selection').each(function(attachment){const media=attachment.toJSON();if(media.url)s.items.push({image_url:media.url,title:media.title||'',link:'',link_type:'in_app'});});markDirty();renderInspector();renderPreview();});
+        frame.on('select',function(){
+          frame.state().get('selection').each(function(attachment){
+            const media=attachment.toJSON();
+            if(media.url)s.items.push({image_url:media.url,attachment_id:Number(media.id)||0,title:media.title||'',link:'',link_type:'in_app'});
+          });
+          markDirty();
+          renderInspector();
+          renderPreview();
+        });
         frame.open();
       }).appendTo(slideWrap);
       $inspector.append(slideWrap);
@@ -718,9 +794,9 @@ jQuery(function($){
         if(!section || !allowed.has(section.type)) throw new Error('Unknown component on '+pageKey+' at position '+(index+1)+'.');
         if(section.type==='banner_slider' && publish){
           const slides=Array.isArray(section.items)?section.items:[];
-          if(!slides.length) throw new Error('Add at least one image to every Image Slider before publishing.');
           slides.forEach((slide,i)=>{
-            if(!slide || !/^https?:\/\//i.test(String(slide.image_url||''))) throw new Error('Image Slider on '+pageKey+' needs a valid image URL for slide '+(i+1)+'.');
+            const imageUrl=String(slide?.image_url||'').trim();
+            if(imageUrl && !/^https?:\/\//i.test(imageUrl)) throw new Error('Image Slider on '+pageKey+' has an invalid image URL at slide '+(i+1)+'.');
           });
         }
       });

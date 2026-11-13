@@ -28,20 +28,22 @@ jobs:
         run: php -l wp-content/plugins/ark-native-api-bridge/ark-native-api-bridge.php
       - name: Validate Designer JavaScript syntax
         run: node --check wp-content/plugins/ark-app-designer/assets/admin.js
+      - name: Run Designer persistence regression checks
+        run: php wp-content/plugins/ark-app-designer/tests/designer-smoke-test.php
       - name: Validate Promo Slider PHP syntax
         run: php -l wp-content/plugins/ark-woo-product-promo-slider/ark-woo-product-promo-slider.php
       - name: Package updated WordPress plugins
         run: |
           mkdir -p dist
           cd wp-content/plugins
-          zip -r ../../dist/ark-app-designer-1.7.2.zip ark-app-designer
+          zip -r ../../dist/ark-app-designer-1.7.4.zip ark-app-designer
           zip -r ../../dist/ark-woo-product-promo-slider-1.1.2.zip ark-woo-product-promo-slider
       - name: Save updated plugin ZIPs
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: ark-native-wordpress-plugins-1.1.2
+          name: ark-native-wordpress-plugins-1.7.4
           path: |
-            dist/ark-app-designer-1.7.2.zip
+            dist/ark-app-designer-1.7.4.zip
             dist/ark-woo-product-promo-slider-1.1.2.zip
           retention-days: 30
