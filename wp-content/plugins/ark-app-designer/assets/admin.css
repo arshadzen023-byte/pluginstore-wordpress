@@ -201,3 +201,19 @@ body.toplevel_page_ark-app-designer .ark-footer { flex:0 0 auto; }
 .ark-slider-setting{margin:9px 0}
 .ark-slider-save{width:100%;justify-content:center;margin-top:12px}
 .ark-live-slide-item .ark-slide-remove{border:1px solid #f0cccc;background:#fff8f8;color:#bb3030;border-radius:8px;padding:8px 10px;cursor:pointer}
+
+
+/* ARK product card preview styles */
+.ark-preview-grid[data-card-design="3d"] .ark-preview-product,
+.ark-preview-grid[data-card-design="3d_glass"] .ark-preview-product{
+  transform:perspective(700px) rotateX(1deg);
+  box-shadow:0 9px 22px rgba(40,116,240,.14);
+  border:1px solid #dce7fa;
+}
+.ark-preview-grid[data-card-design="3d_glass"] .ark-preview-product{
+  background:linear-gradient(145deg,rgba(255,255,255,.94),rgba(231,240,255,.8));
+  backdrop-filter:blur(12px);
+}
+.ark-preview-grid[data-card-animation="glow"] .ark-preview-product{
+  box-shadow:0 0 18px rgba(40,116,240,.2);
+}

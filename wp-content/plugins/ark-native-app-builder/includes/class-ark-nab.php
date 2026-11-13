@@ -8,8 +8,36 @@ final class ARK_NAB {
   if(!get_option('ark_nab_build_token')) add_option('ark_nab_build_token',wp_generate_password(48,false,false), '', false);
   if(!get_option('ark_nab_settings')) add_option('ark_nab_settings',['app_name'=>get_bloginfo('name'),'package'=>'com.ark.glowhit','version'=>'1.0.0','version_code'=>'1','owner'=>'','repo'=>'','workflow'=>'build-android.yml','github_token'=>'','api_base'=>home_url('/wp-json/')]);
  }
- private function __construct(){ add_action('admin_menu',[$this,'menu']); add_action('admin_init',[$this,'settings']); add_action('rest_api_init',[$this,'routes']); }
- private function opts(){ return wp_parse_args(get_option($this->key,[]),['app_name'=>'GlowHit','package'=>'com.ark.glowhit','version'=>'1.0.0','version_code'=>'1','owner'=>'','repo'=>'','workflow'=>'build-android.yml','github_token'=>'','api_base'=>home_url('/wp-json/')]); }
+ private function __construct(){
+  add_action('admin_menu',[$this,'menu']);
+  add_action('admin_init',[$this,'settings']);
+  add_action('admin_enqueue_scripts',[$this,'assets']);
+  add_action('rest_api_init',[$this,'routes']);
+ }
+ function assets($hook){
+  if($hook!=='toplevel_page_ark-native-app-builder') return;
+  wp_enqueue_media();
+  wp_register_script('ark-nab-admin',false,['jquery'],'0.2.0',true);
+  wp_enqueue_script('ark-nab-admin');
+  wp_add_inline_script('ark-nab-admin', "jQuery(function($){
+    $('#ark-nab-choose-icon').on('click',function(e){
+      e.preventDefault();
+      var frame=wp.media({title:'Choose default Android app icon',button:{text:'Use this icon'},multiple:false,library:{type:'image'}});
+      frame.on('select',function(){
+        var file=frame.state().get('selection').first().toJSON();
+        $('#ark-nab-app-icon-url').val(file.url);
+        $('#ark-nab-app-icon-preview').attr('src',file.url).show();
+      });
+      frame.open();
+    });
+    $('#ark-nab-clear-icon').on('click',function(e){
+      e.preventDefault();
+      $('#ark-nab-app-icon-url').val('');
+      $('#ark-nab-app-icon-preview').attr('src','').hide();
+    });
+  });");
+ }
+ private function opts(){ return wp_parse_args(get_option($this->key,[]),['app_name'=>'GlowHit','package'=>'com.ark.glowhit','version'=>'1.0.0','version_code'=>'1','app_icon_url'=>'','owner'=>'','repo'=>'','workflow'=>'build-android.yml','github_token'=>'','api_base'=>home_url('/wp-json/')]); }
  function menu(){ add_menu_page('ARK Native App Builder','ARK App Builder','manage_options','ark-native-app-builder',[$this,'page'],'dashicons-smartphone',58); }
  function settings(){ register_setting('ark_nab_group',$this->key,[$this,'sanitize']); }
  function sanitize($in){
@@ -17,6 +45,7 @@ final class ARK_NAB {
   foreach(['app_name','version'] as $k) $o[$k]=sanitize_text_field($in[$k]??'');
   $o['package']=preg_replace('/[^A-Za-z0-9_.]/','',$in['package']??'com.ark.app');
   $o['version_code']=(string)max(1,absint($in['version_code']??1));
+  $o['app_icon_url']=esc_url_raw($in['app_icon_url']??$old['app_icon_url']??'');
   $o['owner']=sanitize_text_field($in['owner']??''); $o['repo']=sanitize_text_field($in['repo']??'');
   $o['workflow']=sanitize_file_name($in['workflow']??'build-android.yml');
   $o['api_base']=esc_url_raw($in['api_base']??home_url('/wp-json/'));
@@ -37,6 +66,13 @@ final class ARK_NAB {
   <?php foreach(['app_name'=>'App Name','package'=>'Package Name','version'=>'Version Name','version_code'=>'Version Code','api_base'=>'WordPress REST API','owner'=>'GitHub Owner','repo'=>'GitHub Repository','workflow'=>'Workflow file'] as $k=>$label): ?>
   <tr><th><?php echo esc_html($label); ?></th><td><input class="regular-text" name="<?php echo esc_attr($this->key.'['.$k.']'); ?>" value="<?php echo esc_attr($o[$k]); ?>"></td></tr>
   <?php endforeach; ?>
+  <tr><th>Default Android App Icon</th><td>
+    <input id="ark-nab-app-icon-url" class="regular-text" type="url" name="<?php echo esc_attr($this->key); ?>[app_icon_url]" value="<?php echo esc_attr($o['app_icon_url']); ?>" placeholder="Choose a 512 × 512 PNG from Media Library">
+    <button type="button" id="ark-nab-choose-icon" class="button">Choose icon</button>
+    <button type="button" id="ark-nab-clear-icon" class="button">Clear</button>
+    <p><img id="ark-nab-app-icon-preview" src="<?php echo esc_url($o['app_icon_url']); ?>" alt="App icon preview" style="max-width:88px;max-height:88px;border-radius:18px;<?php echo $o['app_icon_url']?'':'display:none;'; ?>"></p>
+    <p class="description">Save once. This icon is reused for every future APK build from this App Builder. A square transparent PNG (512 × 512 or larger) is recommended.</p>
+  </td></tr>
   <tr><th>GitHub Fine-grained Token</th><td><input type="password" class="regular-text" name="<?php echo esc_attr($this->key); ?>[github_token]" placeholder="<?php echo $o['github_token']?'Saved — enter to replace':'github_pat_…'; ?>"><p class="description">Repository permissions: Actions read/write, Contents read.</p></td></tr>
   </table><?php submit_button('Save Settings'); ?></form>
   <hr><h2>Generate APK</h2><form method="post"><?php wp_nonce_field('ark_nab_build'); ?><button class="button button-primary" name="ark_nab_build" value="1">Generate Android APK</button></form>
@@ -70,6 +106,7 @@ final class ARK_NAB {
             'version_name' => $o['version'],
             'version_code' => $o['version_code'],
             'store_url' => home_url('/'),
+            'app_icon_url' => $o['app_icon_url'],
             'build_id' => (string) time(),
         ],
     ];

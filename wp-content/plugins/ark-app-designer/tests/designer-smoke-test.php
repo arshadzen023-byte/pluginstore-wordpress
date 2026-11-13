@@ -1,6 +1,6 @@
 <?php
 /**
- * Source regression checks for ARK App Designer 1.8.0.
+ * Source regression checks for ARK App Designer 1.8.1.
  * Run: php tests/designer-smoke-test.php
  */
 $root = dirname(__DIR__);
@@ -36,6 +36,10 @@ $checks = [
     'WooCommerce category link picker exists' => strpos($js, 'WooCommerce categories') !== false,
     'legacy editor removed from Designer JS' => strpos($js, 'banner_slider') === false,
     'live slider editor CSS exists' => strpos($css, '.ark-live-slide-item') !== false,
+    '3D product card designs are permitted' => strpos($source, "'3d_glass'") !== false,
+    'card animation is persisted rather than discarded' => strpos($source, "'card_animation']") !== false && strpos($source, 'unset($item[\'card_animation\'])') === false,
+    'card depth, radius and image ratio are persisted' => strpos($source, "'card_depth'") !== false && strpos($source, "'card_radius'") !== false && strpos($source, "'card_aspect_ratio'") !== false,
+    'Designer exposes 3D card controls' => strpos($js, 'Interactive 3D tilt') !== false && strpos($js, '3D glass card') !== false,
 ];
 $failed = [];
 foreach ($checks as $label => $passed) {

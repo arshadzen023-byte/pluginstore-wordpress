@@ -71,7 +71,9 @@ jQuery(function($){
     }else if(s.type==='image' && s.image_url){
       $('<img class="ark-preview-single-image" alt="">').attr('src',s.image_url).appendTo(card);
     }else if(['product_grid','product_carousel','recently_viewed','category_grid','icon_grid'].includes(s.type)){
-      const grid=$('<div class="ark-preview-grid"></div>').attr('data-card-design',s.card_design||'flipkart');
+      const grid=$('<div class="ark-preview-grid"></div>')
+        .attr('data-card-design',s.card_design||'flipkart')
+        .attr('data-card-animation',s.card_animation||'none');
       const liveItems=s.type==='category_grid'?(liveCache.categories||[]):(liveCache.products||[]);
       if(liveItems.length){
         liveItems.slice(0,Math.min(4,Number(s.limit||4))).forEach(item=>{
@@ -646,7 +648,16 @@ jQuery(function($){
     }
     if(['product_grid','product_carousel','recently_viewed'].includes(s.type)){
       $inspector.append(choiceField('Product card design','card_design',s.card_design||'flipkart',[
-        ['flipkart','Flipkart clean'],['classic','Classic'],['elevated','Elevated'],['glass','Soft glass'],['compact','Compact'],['minimal','Minimal']
+        ['flipkart','Flipkart clean'],['classic','Classic'],['elevated','Elevated'],['glass','Soft glass'],['compact','Compact'],['minimal','Minimal'],['3d','3D tilt card'],['3d_glass','3D glass card']
+      ]));
+      $inspector.append(choiceField('Product card animation','card_animation',s.card_animation||'none',[
+        ['none','None'],['tilt_3d','Interactive 3D tilt'],['glow','Soft glow']
+      ]));
+      $inspector.append(field('3D depth','card_depth',s.card_depth??12,'number','Set 0 to disable depth. Range 0–30.'));
+      $inspector.append(field('Card radius (px)','card_radius',s.card_radius??14,'number'));
+      $inspector.append(field('Card image aspect ratio','card_aspect_ratio',s.card_aspect_ratio??.66,'number','Range 0.48–1.20. Smaller values make a taller card.'));
+      $inspector.append(choiceField('Card image fit','card_image_fit',s.card_image_fit||'contain',[
+        ['contain','Show full product image'],['cover','Fill and crop']
       ]));
     }
     if(['heading','text','offer_banner'].includes(s.type)){

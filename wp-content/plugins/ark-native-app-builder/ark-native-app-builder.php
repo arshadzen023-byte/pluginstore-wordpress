@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK Native App Builder
  * Description: Configure a Flutter native Android app and trigger APK builds with GitHub Actions.
- * Version: 0.1.0
+ * Version: 0.2.0
  * Requires PHP: 8.0
  */
 if (!defined('ABSPATH')) exit;

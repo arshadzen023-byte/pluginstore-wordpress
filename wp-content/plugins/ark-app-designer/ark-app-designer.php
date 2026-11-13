@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Designer
  * Description: Server-driven visual app designer for ARK Native / GlowHit Flutter apps, including live layout, navigation, theme and in-app splash configuration.
- * Version: 1.8.0
+ * Version: 1.8.1
  * Author: ARK
  * Requires PHP: 7.4
  */
@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class ARK_App_Designer {
-    const VERSION = '1.8.0';
+    const VERSION = '1.8.1';
     const PUBLISHED = 'ark_app_designer_published';
     const DRAFT = 'ark_app_designer_draft';
     const REVISIONS = 'ark_app_designer_revisions';
@@ -755,9 +755,18 @@ final class ARK_App_Designer {
                 $item['alignment'] = in_array(($section['alignment'] ?? 'stretch'), ['stretch','left','center','right'], true) ? ($section['alignment'] ?? 'stretch') : 'stretch';
                 $item['entrance_animation'] = in_array(($section['entrance_animation'] ?? 'none'), ['none','fade','slide','zoom'], true)
                     ? ($section['entrance_animation'] ?? 'none') : 'none';
-                unset($item['card_animation']);
+                $item['card_animation'] = in_array(($section['card_animation'] ?? 'none'), ['none','tilt_3d','glow'], true)
+                    ? ($section['card_animation'] ?? 'none') : 'none';
                 $item['background_motion'] = in_array(($section['background_motion'] ?? 'none'), ['none','pulse','gradient','shimmer','glow'], true) ? ($section['background_motion'] ?? 'none') : 'none';
-                if (isset($section['card_design'])) $item['card_design'] = in_array($section['card_design'], ['flipkart','classic','elevated','glass','compact','minimal'], true) ? $section['card_design'] : 'flipkart';
+                if (isset($section['card_design'])) {
+                    $item['card_design'] = in_array($section['card_design'], ['flipkart','classic','elevated','glass','compact','minimal','3d','3d_glass'], true)
+                        ? $section['card_design'] : 'flipkart';
+                }
+                $item['card_radius'] = min(40, max(0, absint($section['card_radius'] ?? 14)));
+                $item['card_depth'] = min(30, max(0, absint($section['card_depth'] ?? 12)));
+                $item['card_aspect_ratio'] = min(1.20, max(0.48, (float) ($section['card_aspect_ratio'] ?? 0.66)));
+                $item['card_image_fit'] = in_array(($section['card_image_fit'] ?? 'contain'), ['contain','cover'], true)
+                    ? ($section['card_image_fit'] ?? 'contain') : 'contain';
                 if ($type === 'product_delivery') {
                     $item['delivery_style'] = in_array(($section['delivery_style'] ?? 'standard'), ['compact','standard'], true)
                         ? ($section['delivery_style'] ?? 'standard') : 'standard';

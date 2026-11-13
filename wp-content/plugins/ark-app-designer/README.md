@@ -103,7 +103,7 @@ Server-driven changes can modify layout, content, themes, navigation labels, com
 - Published config fields are preserved and sanitized by the server.
 
 
-## Version 1.8.0 — Product page controls
+## Version 1.8.1 — Product page controls
 
 - Added product gallery auto-slide, image fit, pagination and full-screen zoom settings.
 - Added editable floating Wishlist/Share layout, button size, icon size, gap, offsets, background and icon colour.
@@ -112,7 +112,7 @@ Server-driven changes can modify layout, content, themes, navigation labels, com
 - The mobile app renders remote product photos through HTTPS-only cached image loading; page transitions and zoom are native Flutter widgets.
 
 
-## Version 1.8.0 — Image Slider persistence and native tap destinations
+## Version 1.8.1 — Image Slider persistence and native tap destinations
 
 - Image Slider slides keep both the WordPress Media Library attachment ID and canonical image URL in saved/published configuration.
 - Explicitly removed slides remain removed after refresh; empty sliders can be saved without restoring stale legacy data.
@@ -121,7 +121,7 @@ Server-driven changes can modify layout, content, themes, navigation labels, com
 - Product Description preview length defaults to 80 words; the native renderer reveals the full text and embedded images when expanded.
 
 
-## ARK Live Slider — version 1.8.0
+## ARK Live Slider — version 1.8.1
 
 The old embedded **Image slider** component has been replaced by **ARK Live Slider**. Designer JSON now stores only a short `slider_key`; it no longer embeds the full array of banner image URLs.
 
@@ -148,3 +148,8 @@ The old embedded **Image slider** component has been replaced by **ARK Live Slid
 13. Pause autoplay after a user interaction and resume it again.
 
 The authenticated studio endpoint is `/wp-json/ark-designer/v1/studio/sliders/{slider_key}`; the public app endpoint is `/wp-json/ark-designer/v1/sliders/{slider_key}`.
+
+
+## 1.8.1 — Product card layout and 3D controls
+
+Product grid, product carousel and recently viewed components now save and render product card design, card animation, 3D depth, corner radius, image aspect ratio and image fit. The 3D styles include interactive tilt, elevated depth and a glass finish. The selected options are retained in the published native configuration.
