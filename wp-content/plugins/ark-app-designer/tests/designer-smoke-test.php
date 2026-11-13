@@ -23,6 +23,7 @@ $checks = [
     'slide items SQL table exists' => strpos($source, 'ark_live_slider_items') !== false,
     'database migration uses dbDelta' => strpos($source, 'dbDelta(') !== false,
     'legacy slider data migration exists' => strpos($source, 'migrate_legacy_banner_sliders') !== false,
+    'unsaved legacy slides are copied to SQL before removing inline items' => strpos($source, '$this->save_live_slider_payload($slider_key, $legacy_settings, $slides)') !== false,
     'public app slider endpoint exists' => strpos($source, '/sliders/(?P<slider_key>') !== false,
     'authenticated studio slider endpoint exists' => strpos($source, '/studio/sliders/(?P<slider_key>') !== false,
     'scheduled slides are filtered by time' => strpos($source, 'starts_at <= UTC_TIMESTAMP()') !== false,

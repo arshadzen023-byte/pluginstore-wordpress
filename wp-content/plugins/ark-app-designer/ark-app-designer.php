@@ -702,7 +702,8 @@ final class ARK_App_Designer {
             foreach ($sections as $section) {
                 if (!is_array($section)) continue;
                 $type = sanitize_key($section['type'] ?? '');
-                if ($type === 'banner_slider') $type = 'ark_live_slider';
+                $legacy_banner_slider = ($type === 'banner_slider');
+                if ($legacy_banner_slider) $type = 'ark_live_slider';
                 if (!isset(self::component_catalog()[$type])) continue;
                 $item = $this->clean_value($section);
                 $item['id'] = sanitize_key($section['id'] ?? wp_generate_uuid4());
@@ -716,7 +717,36 @@ final class ARK_App_Designer {
                 $item['tap_url'] = $tap_mode === 'chrome'
                     ? $this->clean_url($tap_value) : sanitize_text_field($tap_value);
                 if ($type === 'ark_live_slider') {
-                    $item['slider_key'] = sanitize_key($section['slider_key'] ?? $section['id'] ?? wp_generate_uuid4());
+                    $slider_key = sanitize_key($section['slider_key'] ?? $section['id'] ?? wp_generate_uuid4());
+                    $item['slider_key'] = $slider_key;
+                    if ($legacy_banner_slider) {
+                        $slides = $section['items'] ?? $section['slides'] ?? $section['images'] ?? [];
+                        if (!is_array($slides)) $slides = [];
+                        $is_list = ($slides === []) || (array_keys($slides) === range(0, count($slides) - 1));
+                        if (!$is_list && (isset($slides['image_url']) || isset($slides['image']) || isset($slides['src']) || isset($slides['url']) || isset($slides['attachment_id']))) {
+                            $slides = [$slides];
+                        } elseif (!$is_list && isset($slides['items']) && is_array($slides['items'])) {
+                            $slides = $slides['items'];
+                        } elseif (!$is_list && isset($slides['slides']) && is_array($slides['slides'])) {
+                            $slides = $slides['slides'];
+                        }
+                        $legacy_settings = [
+                            'title' => $section['title'] ?? 'Live Slider',
+                            'height_px' => $section['height'] ?? 178,
+                            'interval_ms' => $section['interval_ms'] ?? 3500,
+                            'autoplay' => $section['autoplay'] ?? true,
+                            'loop_slides' => true,
+                            'transition' => 'slide',
+                            'image_fit' => $section['fit'] ?? 'cover',
+                            'card_width' => $section['card_width'] ?? 0.92,
+                            'slide_gap' => $section['slide_gap'] ?? 8,
+                            'show_arrows' => $section['show_arrows'] ?? false,
+                            'pagination' => !empty($section['show_dots']) ? 'dots' : 'none',
+                            'pause_on_interaction' => true,
+                        ];
+                        $saved_slider = $this->save_live_slider_payload($slider_key, $legacy_settings, $slides);
+                        if (is_wp_error($saved_slider)) return $saved_slider;
+                    }
                     unset($item['items'], $item['slides'], $item['images'], $item['image_url'], $item['button_url']);
                 }
                 foreach (['width_pct' => [10, 100], 'height_px' => [0, 2000], 'min_height_px' => [0, 2000], 'max_width_px' => [0, 2000], 'padding_top' => [0, 120], 'padding_right' => [0, 120], 'padding_bottom' => [0, 120], 'padding_left' => [0, 120], 'margin_top' => [0, 120], 'margin_right' => [0, 120], 'margin_bottom' => [0, 120], 'margin_left' => [0, 120], 'corner_radius' => [0, 60]] as $layout_key => $range) {
@@ -776,65 +806,6 @@ final class ARK_App_Designer {
                     $dest_mode = in_array(($section['destination_link_type'] ?? 'chrome'), ['in_app','deeplink','chrome'], true) ? ($section['destination_link_type'] ?? 'chrome') : 'chrome';
                     $item['destination_link_type'] = $dest_mode;
                     $item['destination_url'] = $dest_mode === 'chrome' ? $this->clean_url($section['destination_url']) : sanitize_text_field($section['destination_url']);
-                }
-                // Store every slider image in the canonical native payload. An
-                // explicitly empty items list means the admin removed all slides.
-                if ($type === '__legacy_banner_slider_disabled') {
-                    if (array_key_exists('items', $section)) {
-                        $slides = $section['items'];
-                    } else {
-                        $slides = $section['slides'] ?? $section['images'] ?? [];
-                    }
-                    if (!is_array($slides)) $slides = [];
-                    $is_list = $slides === [] || array_keys($slides) === range(0, count($slides) - 1);
-                    if (!$is_list && (isset($slides['image_url']) || isset($slides['image']) || isset($slides['src']) || isset($slides['url']) || isset($slides['media_url']))) {
-                        $slides = [$slides];
-                    } elseif (!$is_list && isset($slides['items']) && is_array($slides['items'])) {
-                        $slides = $slides['items'];
-                    } elseif (!$is_list && isset($slides['slides']) && is_array($slides['slides'])) {
-                        $slides = $slides['slides'];
-                    }
-                    $item['items'] = [];
-                    foreach (array_slice($slides, 0, 20) as $slide) {
-                        if (is_string($slide)) $slide = ['image_url' => $slide];
-                        if (!is_array($slide)) continue;
-                        $attachment_id = absint($slide['attachment_id'] ?? $slide['id'] ?? 0);
-                        $image_value = '';
-                        foreach (['image_url','image','src','url','media_url','attachment_url','source_url'] as $candidate) {
-                            if (isset($slide[$candidate]) && $slide[$candidate] !== '') {
-                                $image_value = $slide[$candidate];
-                                break;
-                            }
-                        }
-                        if (is_array($image_value)) {
-                            $image_value = $image_value['url'] ?? $image_value['src'] ?? $image_value['source_url'] ?? '';
-                        }
-                        $image_url = $this->clean_url($image_value);
-                        if ($image_url === '' && $attachment_id > 0 && function_exists('wp_get_attachment_url')) {
-                            $image_url = $this->clean_url(wp_get_attachment_url($attachment_id));
-                        }
-                        if ($image_url === '') continue;
-                        $mode = in_array(($slide['link_type'] ?? 'chrome'), ['in_app','deeplink','chrome'], true)
-                            ? ($slide['link_type'] ?? 'chrome') : 'chrome';
-                        $link_value = $slide['link'] ?? $slide['button_url'] ?? '';
-                        $item['items'][] = [
-                            'image_url' => $image_url,
-                            'attachment_id' => $attachment_id,
-                            'title' => sanitize_text_field($slide['title'] ?? ''),
-                            'link_type' => $mode,
-                            'link' => $mode === 'chrome' ? $this->clean_url($link_value) : sanitize_text_field($link_value),
-                        ];
-                    }
-                    $item['height'] = min(600, max(80, absint($section['height'] ?? 178)));
-                    $item['card_width'] = min(1, max(0.45, (float) ($section['card_width'] ?? 0.92)));
-                    $item['interval_ms'] = min(30000, max(1000, absint($section['interval_ms'] ?? 3500)));
-                    $item['animation_ms'] = min(2000, max(150, absint($section['animation_ms'] ?? 450)));
-                    $item['slide_gap'] = min(32, max(0, absint($section['slide_gap'] ?? 8)));
-                    $item['autoplay'] = !array_key_exists('autoplay', $section) || (bool) $section['autoplay'];
-                    $item['show_dots'] = !array_key_exists('show_dots', $section) || (bool) $section['show_dots'];
-                    $item['show_arrows'] = !empty($section['show_arrows']);
-                    $item['fit'] = in_array(($section['fit'] ?? 'cover'), ['cover','contain','fill'], true)
-                        ? ($section['fit'] ?? 'cover') : 'cover';
                 }
                 if ($type === 'product_gallery') {
                     $item['gallery_height'] = min(600, max(220, absint($section['gallery_height'] ?? 390)));
