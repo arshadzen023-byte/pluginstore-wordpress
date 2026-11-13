@@ -13,6 +13,9 @@ on:
       - 'wp-content/plugins/ark-app-designer/**'
       - 'wp-content/plugins/ark-native-app-builder/**'
       - '.github/workflows/validate-ark-designer.yml'
+permissions:
+  contents: write
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -43,6 +46,28 @@ jobs:
           zip -r ../../dist/ark-app-designer-1.8.1.zip ark-app-designer
           zip -r ../../dist/ark-native-app-builder-0.2.0.zip ark-native-app-builder
           zip -r ../../dist/ark-woo-product-promo-slider-1.1.2.zip ark-woo-product-promo-slider
+      - name: Publish installable ZIP downloads
+        env:
+          GITHUB_TOKEN: \${{ github.token }}
+        run: |
+          mkdir -p /tmp/ark-plugin-downloads
+          cp dist/ark-app-designer-1.8.1.zip /tmp/ark-plugin-downloads/
+          cp dist/ark-native-app-builder-0.2.0.zip /tmp/ark-plugin-downloads/
+          cp dist/ark-woo-product-promo-slider-1.1.2.zip /tmp/ark-plugin-downloads/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin plugin-downloads >/dev/null 2>&1; then
+            git fetch origin plugin-downloads
+            git checkout -B plugin-downloads FETCH_HEAD
+          else
+            git checkout --orphan plugin-downloads
+          fi
+          git rm -rf . >/dev/null 2>&1 || true
+          cp /tmp/ark-plugin-downloads/*.zip .
+          git add ark-app-designer-1.8.1.zip ark-native-app-builder-0.2.0.zip ark-woo-product-promo-slider-1.1.2.zip
+          git commit -m "Publish installable WordPress plugin ZIPs"
+          git push https://x-access-token:$GITHUB_TOKEN@github.com/$GITHUB_REPOSITORY.git HEAD:plugin-downloads --force
+
       - name: Save updated plugin ZIPs
         continue-on-error: true
         uses: actions/upload-artifact@v4
