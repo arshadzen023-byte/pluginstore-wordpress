@@ -1,13 +1,13 @@
 # ARK App Designer WordPress Plugin
 
-**Plugin:** ARK App Designer 1.6.3  
-**GlowHit app engine:** 1.0.24 (build 23)  
+**Plugin:** ARK App Designer 1.12.0  
+**GlowHit app engine:** 1.0.36 (build 35)  
 **Companion app:** ARK Studio 1.0.0
 
 ARK App Designer controls supported Flutter app layouts and splash configuration from WordPress. Install it as a separate plugin next to WooCommerce and the ARK App Push Notifications plugin.
 
 ## Install
-1. Download the `ark-app-designer` folder as a ZIP, or use the GitHub Actions artifact `ark-app-designer-1.6.3`.
+1. Download the `ark-app-designer` folder as a ZIP, or use the GitHub Actions artifact `ark-app-designer-1.12.0`.
 2. WordPress Admin → Plugins → Add Plugin → Upload Plugin.
 3. Upload and activate **ARK App Designer**.
 4. Open **ARK App Designer** in the WordPress admin menu.
@@ -21,17 +21,18 @@ The public endpoint returns layout/theme/splash JSON only. Draft and GitHub sour
 ## Visual Designer
 
 The designer uses a full-screen workspace with larger typography, a searchable component library and an editable menu builder.
-- Pages: Home, Categories, Product and Account.
+- Pages: Home, Search, Categories, Wishlist, Product and Account.
 - Add allow-listed components from the left palette.
 - Click a component to edit its properties.
 - Drag a component by its title to reorder it; use the arrow buttons for precise movement.
 - Hide/show components, change titles, descriptions, product sources, grid columns and spacing.
 - Banner sliders support multiple images, per-slide title/link mode, Media Library selection, height, card width, auto-slide interval, transition speed, dots, arrows and image fit.
-- Search supports rotating hint phrases and live product filtering while typing.
+- Search has its own drag-and-drop page, recent searches, image-backed live product suggestions, trending/recommended product rails, configurable placeholder/colours, voice search (English/Hindi locale) and camera text search.
 - Product grids/sliders support configurable card sizing and optional destination links.
 - Component library includes searchable components, FAQ accordion, trust badges and coupon cards.
 - Theme controls: primary/accent/background/surface/text colours, card radius and typography scale.
-- App identity: in-app name and tagline.
+- App identity: in-app name, tagline, Media Library icon/logo and splash settings. The APK build requires a published icon/logo so the Android launcher icon does not silently fall back to the old default.
+- Icon visibility: independently show/hide app icon, app name, page title, refresh, notifications and cart on Home, Search, Categories, Wishlist, Product and Account.
 - Navigation: show/hide the bottom bar; add/delete menu items; configure labels, icons, in-app page destinations, deep links, Chrome URLs and animation presets.
 - Splash screen: image/logo with real image preview, background, title, subtitle, fit, duration and native Flutter entrance animation (none, fade, zoom or slide).
 - Save Draft does not affect customers. Publish creates a versioned configuration and keeps up to 20 previous revisions.
