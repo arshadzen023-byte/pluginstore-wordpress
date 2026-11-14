@@ -40,7 +40,13 @@ jQuery(function($){
     const pct=Math.max(10,Math.min(100,Number(s.width_pct)||100));
     card.css({width:pct+'%',minHeight:Number(s.min_height_px)>0?Number(s.min_height_px)+'px':'',maxWidth:Number(s.max_width_px)>0?Number(s.max_width_px)+'px':'none',height:Number(s.height_px)>0?Number(s.height_px)+'px':'auto',padding:[s.padding_top??15,s.padding_right??15,s.padding_bottom??15,s.padding_left??15].map(v=>Number(v)+'px').join(' '),margin:[s.margin_top||0,s.margin_right||0,s.margin_bottom||0,s.margin_left||0].map(v=>Number(v)+'px').join(' '),marginLeft:s.alignment==='right'?'auto':s.alignment==='center'?'auto':'0',marginRight:s.alignment==='left'?'auto':s.alignment==='center'?'auto':'0',borderRadius:(Number(s.corner_radius)||16)+'px',background:s.section_background||''});
     if(s.subtitle||s.text)$('<div class="ark-preview-sub"></div>').text(s.subtitle||s.text).appendTo(card);
-    if(s.type==='search'){
+    if(s.type==='heading'){
+      const heading=$('<div class="ark-heading-preview"></div>').css({display:'flex',alignItems:'center',gap:'9px',padding:'10px',borderRadius:(Number(s.corner_radius)||12)+'px',background:s.section_background||'#fff',backgroundImage:s.background_image_url?'url('+JSON.stringify(s.background_image_url)+')':'none',backgroundSize:'cover',backgroundPosition:'center'});
+      if(s.show_icon!==false)$('<span></span>').text('✦').css({fontSize:'20px'}).appendTo(heading);
+      if(s.show_title!==false)$('<b></b>').text(s.title||'Heading').appendTo(heading);
+      if(s.subtitle)$('<small></small>').text(s.subtitle).appendTo(heading);
+      card.append(heading);
+    }else     if(s.type==='search'){
       $('<div class="ark-real-search"></div>').text('⌕  '+(s.hints?.[0]||s.placeholder||'Search products…')).appendTo(card);
     }else if(s.type==='ark_live_slider'){
       const saved=liveCache.sliders[s.slider_key];
@@ -220,7 +226,7 @@ jQuery(function($){
       markDirty();renderPreview();
     });
     wrap.append(input);
-    if(type==='url'&&['image_url','logo_url','icon_url','splash_image_url'].includes(key)){
+    if(type==='url'&&['image_url','logo_url','icon_url','splash_image_url','background_image_url'].includes(key)){
       const media=$('<button type="button" class="ark-media-pick">Choose from Media Library</button>');
       media.on('click',function(e){
         e.preventDefault();
@@ -529,6 +535,12 @@ jQuery(function($){
       const app=state.config.app||(state.config.app={});
       $inspector.append(field('App display name','name',app.name||'GlowHit'));
       $inspector.append(field('App tagline','tagline',app.tagline||''));
+      $inspector.append(field('Show app icon','show_icon',app.show_icon!==false,'checkbox'));
+      $inspector.append(field('Show app name','show_name',app.show_name!==false,'checkbox'));
+      $inspector.append(field('Show Refresh button','show_refresh',app.show_refresh!==false,'checkbox'));
+      $inspector.append(field('Show Notifications button','show_notifications',app.show_notifications!==false,'checkbox'));
+      $inspector.append(field('Show Cart button','show_cart',app.show_cart!==false,'checkbox'));
+      $inspector.append(choiceField('Header icon animation','header_icon_animation',app.header_icon_animation||'none',[['none','None'],['pulse','Pulse'],['rotate','Rotate'],['bounce','Bounce']]));
       $inspector.append(field('App display name','name',app.name||'GlowHit'));
       $inspector.append(field('App icon (in-app header)','icon_url',app.icon_url||'','url','Updates the icon shown inside the installed app after its next design sync. Android launcher icon still requires an APK update.'));
       $inspector.append(field('App logo','logo_url',app.logo_url||'','url','Select the logo used by supported app branding and splash fallback.'));
@@ -659,6 +671,27 @@ jQuery(function($){
       $inspector.append(choiceField('Card image fit','card_image_fit',s.card_image_fit||'contain',[
         ['contain','Show full product image'],['cover','Fill and crop']
       ]));
+    }
+    if(s.type==='heading'){
+      $inspector.append(field('Show heading icon','show_icon',s.show_icon!==false,'checkbox'));
+      $inspector.append(field('Material icon name','icon_name',s.icon_name||'local_offer','text','Examples: local_offer, bolt, star, verified, new_releases.'));
+      $inspector.append(field('Show heading name','show_title',s.show_title!==false,'checkbox'));
+      $inspector.append(choiceField('Heading animation','heading_animation',s.heading_animation||'none',[['none','None'],['fade','Fade'],['slide','Slide'],['pulse','Pulse'],['gradient','Animated gradient']]));
+      $inspector.append(choiceField('Icon animation','heading_icon_animation',s.heading_icon_animation||'none',[['none','None'],['pulse','Pulse'],['rotate','Rotate'],['bounce','Bounce']]));
+      $inspector.append(field('Background image / GIF URL','background_image_url',s.background_image_url||'','url','Animated GIFs play natively as a background image.'));
+      const pages=['home','categories','product','account','wishlist'];
+      const visibility=$('<div class="ark-field"><label>Visible on pages</label><div class="ark-heading-pages"></div></div>');
+      pages.forEach(key=>{
+        const label=$('<label style="display:flex;gap:8px;align-items:center;margin:6px 0"></label>');
+        const cb=$('<input type="checkbox">').prop('checked',!Array.isArray(s.visible_pages)||s.visible_pages.includes(key));
+        cb.on('change',()=>{
+          const current=Array.isArray(s.visible_pages)?s.visible_pages.slice():pages.slice();
+          s.visible_pages=cb.is(':checked')?[...new Set([...current,key])]:current.filter(x=>x!==key);
+          markDirty();renderPreview();
+        });
+        label.append(cb,document.createTextNode(key[0].toUpperCase()+key.slice(1)));visibility.find('.ark-heading-pages').append(label);
+      });
+      $inspector.append(visibility);
     }
     if(['heading','text','offer_banner'].includes(s.type)){
       $inspector.append(choiceField('Text alignment','text_alignment',s.text_alignment||'left',[
@@ -862,6 +895,7 @@ jQuery(function($){
     const defaults={id,type,visible:true,title:ARKDesigner.components[type]?.label||type};
     if(['product_grid','product_carousel','recently_viewed','category_grid'].includes(type))Object.assign(defaults,{limit:8,columns:2,source:'latest',card_width:.46,card_ratio:.66});
     if(type==='ark_live_slider')Object.assign(defaults,{slider_key:'slider-'+id,tap_link_type:'in_app'});
+    if(type==='heading')Object.assign(defaults,{show_icon:true,icon_name:'local_offer',show_title:true,text_alignment:'left',heading_animation:'none',heading_icon_animation:'none',visible_pages:[state.page],tap_link_type:'in_app'});
     if(type==='product_gallery')Object.assign(defaults,{gallery_height:390,gallery_fit:'contain',auto_slide:true,auto_slide_interval_ms:4200,show_dots:true,allow_zoom:true,show_wishlist:true,show_share:true,action_layout:'vertical',action_button_size:44,action_icon_size:21,action_gap:9,action_offset_top:14,action_offset_right:14,action_background:'#FFFFFF',action_icon_color:'#263248'});
     if(type==='product_recommended')Object.assign(defaults,{promo_autoplay:true,promo_interval_ms:4000,promo_card_height:112,promo_card_width:238,promo_image_size:72,show_ad_badge:true,ad_label:'AD',show_discount:true,show_original_price:true});
     if(type==='search')Object.assign(defaults,{placeholder:'Search products...',hints:['Search Watch','Search TV','Search Plugin'],hint_interval_ms:2200});
