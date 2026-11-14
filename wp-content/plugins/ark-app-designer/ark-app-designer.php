@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Designer
  * Description: Server-driven visual app designer for ARK Native / GlowHit Flutter apps, including live layout, navigation, theme and in-app splash configuration.
- * Version: 1.9.0
+ * Version: 1.12.1
  * Author: ARK
  * Requires PHP: 7.4
  */
@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class ARK_App_Designer {
-    const VERSION = '1.9.0';
+    const VERSION = '1.12.1';
     const PUBLISHED = 'ark_app_designer_published';
     const DRAFT = 'ark_app_designer_draft';
     const REVISIONS = 'ark_app_designer_revisions';
@@ -44,6 +44,15 @@ final class ARK_App_Designer {
             'version' => 1,
             'updated_at' => gmdate('c'),
             'app' => ['name' => 'GlowHit', 'tagline' => 'Shop smarter', 'icon_url' => '', 'logo_url' => '', 'show_icon' => true, 'show_name' => true, 'show_refresh' => true, 'show_notifications' => true, 'show_cart' => true, 'header_icon_animation' => 'none', 'splash_image_url' => '', 'splash_enabled' => true, 'splash_duration_ms' => 1800, 'splash_fit' => 'contain', 'splash_background' => '#F5F7FB'],
+            'default_heading' => [
+                'enabled' => true, 'visible_pages' => ['home','categories','wishlist','account'],
+                'show_app_logo' => true, 'show_app_name' => true, 'show_icon' => false, 'icon_name' => 'storefront',
+                'show_title' => true, 'title' => '', 'show_button' => false, 'button_label' => 'Explore',
+                'button_icon' => 'arrow_forward', 'button_link_type' => 'in_app', 'button_url' => 'page:categories',
+                'background_color' => '#FFFFFF', 'background_image_url' => '', 'show_background_image' => false,
+                'background_image_fit' => 'cover', 'title_color' => '#202733', 'icon_color' => '#202733',
+                'button_background' => '#2874F0', 'button_text_color' => '#FFFFFF', 'height' => 64,
+            ],
             
             'theme' => [
                 'primary' => '#2874F0',
@@ -94,13 +103,18 @@ final class ARK_App_Designer {
             ],
             'pages' => [
                 'home' => ['title' => 'Home', 'sections' => [
-                    ['id' => 'home-search', 'type' => 'search', 'visible' => true, 'title' => 'Search products', 'placeholder' => 'Search products...'],
+                    ['id' => 'home-search', 'type' => 'search', 'visible' => true, 'title' => 'Search products', 'placeholder' => 'Search products...', 'open_search_page' => true, 'show_voice_search' => true, 'show_camera_search' => true],
                     ['id' => 'home-hero', 'type' => 'ark_live_slider', 'slider_key' => 'home-hero', 'visible' => true, 'title' => 'Featured'],
                     ['id' => 'home-cats', 'type' => 'category_grid', 'visible' => true, 'title' => 'Shop by category', 'limit' => 8, 'columns' => 4, 'style' => 'rounded'],
                     ['id' => 'home-featured', 'type' => 'product_carousel', 'visible' => true, 'title' => 'Featured products', 'source' => 'featured', 'limit' => 10],
                     ['id' => 'home-offer', 'type' => 'offer_banner', 'visible' => true, 'title' => 'Special offers', 'subtitle' => 'Explore today’s best deals', 'button_label' => 'Shop now', 'button_url' => ''],
                     ['id' => 'home-recent', 'type' => 'recently_viewed', 'visible' => true, 'title' => 'Recently viewed', 'limit' => 8],
                     ['id' => 'home-products', 'type' => 'product_grid', 'visible' => true, 'title' => 'Shop products', 'source' => 'latest', 'limit' => 12, 'columns' => 2],
+                ]],
+                'search' => ['title' => 'Search', 'search_settings' => ['placeholder' => 'Search products...', 'show_voice_search' => true, 'show_camera_search' => true, 'show_cart' => true, 'voice_locale' => 'en_IN', 'top_bar_background' => '#D7E6FF', 'search_bar_background' => '#FFFFFF', 'suggestion_limit' => 8], 'sections' => [
+                    ['id' => 'search-recent', 'type' => 'recent_searches', 'visible' => true, 'title' => 'Recent Searches', 'limit' => 8],
+                    ['id' => 'search-recommended', 'type' => 'product_carousel', 'visible' => true, 'title' => 'Recommended Stores', 'source' => 'featured', 'limit' => 8],
+                    ['id' => 'search-trending', 'type' => 'product_carousel', 'visible' => true, 'title' => 'Trending Today', 'source' => 'latest', 'limit' => 12],
                 ]],
                 'categories' => ['title' => 'Categories', 'sections' => [
                     ['id' => 'categories-grid', 'type' => 'category_grid', 'visible' => true, 'title' => 'All categories', 'limit' => 100, 'columns' => 2],
@@ -128,6 +142,41 @@ final class ARK_App_Designer {
         ];
     }
 
+    /**
+     * Upgrade older saved Draft/Published payloads in memory before editing or
+     * serving them. Keep saved section lists intact; merge only object-shaped
+     * settings so newly introduced controls never disappear on an unrelated save.
+     */
+    private function merge_config_defaults($saved) {
+        $defaults = self::default_config();
+        if (!is_array($saved)) $saved = [];
+        $config = array_merge($defaults, $saved);
+
+        foreach (['app', 'theme', 'default_heading', 'splash', 'loading', 'celebration', 'navigation'] as $key) {
+            $existing = is_array($saved[$key] ?? null) ? $saved[$key] : [];
+            $config[$key] = array_merge(is_array($defaults[$key] ?? null) ? $defaults[$key] : [], $existing);
+        }
+
+        $savedPages = is_array($saved['pages'] ?? null) ? $saved['pages'] : [];
+        $config['pages'] = [];
+        foreach ($defaults['pages'] as $pageKey => $defaultPage) {
+            $existingPage = is_array($savedPages[$pageKey] ?? null) ? $savedPages[$pageKey] : [];
+            $page = array_merge($defaultPage, $existingPage);
+            if ($pageKey === 'search') {
+                $existingSettings = is_array($existingPage['search_settings'] ?? null) ? $existingPage['search_settings'] : [];
+                $page['search_settings'] = array_merge($defaultPage['search_settings'], $existingSettings);
+            }
+            // A missing section list gets safe defaults; an intentionally empty list stays empty.
+            if (!array_key_exists('sections', $existingPage) || !is_array($existingPage['sections'])) {
+                $page['sections'] = $defaultPage['sections'];
+            } else {
+                $page['sections'] = array_values($existingPage['sections']);
+            }
+            $config['pages'][$pageKey] = $page;
+        }
+        return $config;
+    }
+
     public function admin_menu() {
         add_menu_page(
             'ARK App Designer',
@@ -144,9 +193,13 @@ final class ARK_App_Designer {
         if ($hook !== 'toplevel_page_ark-app-designer') return;
         wp_enqueue_media();
         wp_enqueue_script('jquery-ui-sortable');
-        wp_enqueue_style('ark-app-designer-admin', plugin_dir_url(__FILE__) . 'assets/admin.css', [], self::VERSION);
-        wp_enqueue_script('ark-app-designer-admin', plugin_dir_url(__FILE__) . 'assets/admin.js', ['jquery'], self::VERSION, true);
-        $config = get_option(self::DRAFT, get_option(self::PUBLISHED, self::default_config()));
+        $css_path = plugin_dir_path(__FILE__) . 'assets/admin.css';
+        $js_path = plugin_dir_path(__FILE__) . 'assets/admin.js';
+        $css_version = file_exists($css_path) ? (string) filemtime($css_path) : self::VERSION;
+        $js_version = file_exists($js_path) ? (string) filemtime($js_path) : self::VERSION;
+        wp_enqueue_style('ark-app-designer-admin', plugin_dir_url(__FILE__) . 'assets/admin.css', [], $css_version);
+        wp_enqueue_script('ark-app-designer-admin', plugin_dir_url(__FILE__) . 'assets/admin.js', ['jquery'], $js_version, true);
+        $config = $this->merge_config_defaults(get_option(self::DRAFT, get_option(self::PUBLISHED, self::default_config())));
         wp_localize_script('ark-app-designer-admin', 'ARKDesigner', [
             'restUrl' => esc_url_raw(rest_url(self::REST_NAMESPACE . '/')),
             'nonce' => wp_create_nonce('wp_rest'),
@@ -158,7 +211,9 @@ final class ARK_App_Designer {
     public static function component_catalog() {
         return [
             'heading' => ['label' => 'Heading', 'icon' => 'H', 'description' => 'Section title and subtitle'],
-            'search' => ['label' => 'Search bar', 'icon' => '⌕', 'description' => 'Native WooCommerce product search'],
+            'search' => ['label' => 'Search bar', 'icon' => '⌕', 'description' => 'Native search page with live product suggestions, voice and camera OCR'],
+            'recent_searches' => ['label' => 'Recent searches', 'icon' => '◷', 'description' => 'Recent search history'],
+            'search_suggestions' => ['label' => 'Search suggestions', 'icon' => '⌕', 'description' => 'Popular searches'],
             'notice_bar' => ['label' => 'Announcement strip', 'icon' => '▰', 'description' => 'Compact store message with optional link'],
             'icon_grid' => ['label' => 'Icon shortcuts', 'icon' => '⊞', 'description' => 'Grid of icon links and quick actions'],
             'countdown' => ['label' => 'Countdown card', 'icon' => '◷', 'description' => 'Live countdown to a selected deadline'],
@@ -575,12 +630,13 @@ final class ARK_App_Designer {
     }
 
     public function api_config() {
-        $config = get_option(self::PUBLISHED, self::default_config());
+        $config = $this->merge_config_defaults(get_option(self::PUBLISHED, self::default_config()));
         return rest_ensure_response($config);
     }
 
     public function api_studio_config() {
-        return rest_ensure_response(get_option(self::DRAFT, get_option(self::PUBLISHED, self::default_config())));
+        $config = $this->merge_config_defaults(get_option(self::DRAFT, get_option(self::PUBLISHED, self::default_config())));
+        return rest_ensure_response($config);
     }
 
     /** Return real native page and WooCommerce product destinations for slider links. */
@@ -650,10 +706,27 @@ final class ARK_App_Designer {
         $base = self::default_config();
         $clean = $this->clean_value($raw);
         if (!is_array($clean)) return new WP_Error('ark_designer_invalid', 'Invalid design configuration.', ['status' => 400]);
+        // Merge schema defaults before sanitizing. This prevents older drafts from
+        // erasing newer controls (notably the Default Heading Bar) when another page is saved.
+        $clean = $this->merge_config_defaults($clean);
 
         $clean['schema_version'] = 1;
         $clean['version'] = max(1, absint($raw['version'] ?? 1));
         $clean['updated_at'] = gmdate('c');
+
+        $app = is_array($clean['app'] ?? null) ? $clean['app'] : $base['app'];
+        $icon_visibility = is_array($app['icon_visibility'] ?? null) ? $app['icon_visibility'] : [];
+        $visibility_pages = ['home','search','categories','product','wishlist','account'];
+        $visibility_icons = ['app_icon','app_name','page_title','refresh','notifications','cart','wishlist','share','add_to_cart','buy_now'];
+        foreach ($visibility_pages as $visibility_page) {
+            $page_visibility = is_array($icon_visibility[$visibility_page] ?? null) ? $icon_visibility[$visibility_page] : [];
+            foreach ($visibility_icons as $visibility_icon) {
+                $page_visibility[$visibility_icon] = !array_key_exists($visibility_icon, $page_visibility) || (bool) $page_visibility[$visibility_icon];
+            }
+            $icon_visibility[$visibility_page] = $page_visibility;
+        }
+        $app['icon_visibility'] = $icon_visibility;
+        $clean['app'] = $app;
 
         $theme = is_array($clean['theme'] ?? null) ? $clean['theme'] : [];
         foreach (['primary','accent','background','surface','text','muted'] as $color) {
@@ -694,9 +767,21 @@ final class ARK_App_Designer {
         $clean['celebration'] = $celebration;
 
         $pages = is_array($clean['pages'] ?? null) ? $clean['pages'] : [];
-        $allowed_pages = ['home','categories','product','account','wishlist'];
+        $allowed_pages = ['home','search','categories','product','account','wishlist'];
         foreach ($allowed_pages as $page_key) {
             $page = is_array($pages[$page_key] ?? null) ? $pages[$page_key] : $base['pages'][$page_key];
+            if ($page_key === 'search') {
+                $search_settings = is_array($page['search_settings'] ?? null) ? $page['search_settings'] : ($base['pages']['search']['search_settings'] ?? []);
+                $search_settings['placeholder'] = sanitize_text_field($search_settings['placeholder'] ?? 'Search products...');
+                $search_settings['show_voice_search'] = !array_key_exists('show_voice_search', $search_settings) || !empty($search_settings['show_voice_search']);
+                $search_settings['show_camera_search'] = !array_key_exists('show_camera_search', $search_settings) || !empty($search_settings['show_camera_search']);
+                $search_settings['show_cart'] = !array_key_exists('show_cart', $search_settings) || !empty($search_settings['show_cart']);
+                $search_settings['voice_locale'] = in_array(($search_settings['voice_locale'] ?? 'en_IN'), ['en_IN','hi_IN'], true) ? ($search_settings['voice_locale'] ?? 'en_IN') : 'en_IN';
+                $search_settings['top_bar_background'] = sanitize_hex_color($search_settings['top_bar_background'] ?? '') ?: '#D7E6FF';
+                $search_settings['search_bar_background'] = sanitize_hex_color($search_settings['search_bar_background'] ?? '') ?: '#FFFFFF';
+                $search_settings['suggestion_limit'] = min(20, max(1, absint($search_settings['suggestion_limit'] ?? 8)));
+                $page['search_settings'] = $search_settings;
+            }
             $sections = is_array($page['sections'] ?? null) ? array_slice($page['sections'], 0, 50) : [];
             $page['sections'] = [];
             foreach ($sections as $section) {
@@ -711,7 +796,7 @@ final class ARK_App_Designer {
                 $item['visible'] = !array_key_exists('visible', $section) || (bool) $section['visible'];
                 if (isset($section['image_url'])) $item['image_url'] = $this->clean_url($section['image_url']);
                 if (isset($section['background_image_url'])) $item['background_image_url'] = $this->clean_url($section['background_image_url']);
-                if (isset($section['visible_pages']) && is_array($section['visible_pages'])) $item['visible_pages'] = array_values(array_intersect(['home','categories','product','account','wishlist'], array_map('sanitize_key', $section['visible_pages'])));
+                if (isset($section['visible_pages']) && is_array($section['visible_pages'])) $item['visible_pages'] = array_values(array_intersect(['home','search','categories','product','account','wishlist'], array_map('sanitize_key', $section['visible_pages'])));
                 $item['show_icon'] = !array_key_exists('show_icon', $section) || (bool) $section['show_icon'];
                 $item['show_title'] = !array_key_exists('show_title', $section) || (bool) $section['show_title'];
                 $item['heading_animation'] = in_array(($section['heading_animation'] ?? 'none'), ['none','fade','slide','pulse','gradient'], true) ? ($section['heading_animation'] ?? 'none') : 'none';
@@ -1096,7 +1181,7 @@ final class ARK_App_Designer {
         echo '<div class="wrap ark-designer-wrap"><div class="ark-designer-app">';
         echo '<header class="ark-topbar"><div class="ark-brand"><span class="ark-brand-mark">A</span><div><strong>ARK App Designer</strong><small>Visual studio for GlowHit</small></div></div>';
         echo '<div class="ark-top-actions"><span class="ark-status"><i></i> Connected to WordPress</span><button class="ark-btn ark-btn-ghost" id="ark-save-draft">Save draft</button><button class="ark-btn ark-btn-publish" id="ark-publish">Publish changes ↗</button></div></header>';
-        echo '<main class="ark-workspace"><aside class="ark-sidebar"><button type="button" class="ark-panel-toggle" id="ark-toggle-left" aria-label="Collapse components panel">☰ Components</button><div class="ark-sidebar-title">BUILD YOUR APP</div><div class="ark-page-list" id="ark-pages"></div><div class="ark-sidebar-divider"></div><div class="ark-sidebar-title">ADD COMPONENT</div><div class="ark-component-list" id="ark-components"></div><div class="ark-sidebar-divider"></div><button class="ark-quick-link" data-view="app">✎ App name & identity</button><button class="ark-quick-link" data-view="theme">◈ Theme & colours</button><button class="ark-quick-link" data-view="celebration">✧ Crackers animation</button><button class="ark-quick-link" data-view="navigation">☷ Navigation</button><button class="ark-quick-link" data-view="source">⌘ App source files</button></aside>';
+        echo '<main class="ark-workspace"><aside class="ark-sidebar"><button type="button" class="ark-panel-toggle" id="ark-toggle-left" aria-label="Collapse components panel">☰ Components</button><div class="ark-sidebar-title">BUILD YOUR APP</div><div class="ark-page-list" id="ark-pages"></div><div class="ark-sidebar-divider"></div><button type="button" class="ark-quick-link" data-view="default_heading">▤ Default heading bar</button><div class="ark-sidebar-divider"></div><div class="ark-sidebar-title">ADD COMPONENT</div><div class="ark-component-list" id="ark-components"></div><div class="ark-sidebar-divider"></div><button class="ark-quick-link" data-view="app">✎ App name & identity</button><button class="ark-quick-link" data-view="theme">◈ Theme & colours</button><button class="ark-quick-link" data-view="celebration">✧ Crackers animation</button><button class="ark-quick-link" data-view="navigation">☷ Navigation</button><button class="ark-quick-link" data-view="icon_visibility">◉ Icon visibility</button><button class="ark-quick-link" data-view="source">⌘ App source files</button></aside>';
         echo '<section class="ark-canvas-area"><div class="ark-canvas-toolbar"><div><strong id="ark-canvas-title">Home page</strong><span id="ark-canvas-subtitle">Drag sections or use the arrows to change order</span></div><div class="ark-canvas-tools"><span class="ark-live-pill">● LIVE PREVIEW</span><button class="ark-icon-btn" id="ark-preview-refresh" title="Refresh preview">↻</button></div></div>';
         echo '<div class="ark-canvas-scroll"><div class="ark-phone"><div class="ark-phone-status"><span>9:41</span><span>● ● ▰</span></div><div class="ark-phone-screen" id="ark-preview"></div><div class="ark-phone-nav"><span>⌂</span><span>▦</span><span>♡</span><span>♙</span></div></div></div></section>';
         echo '<aside class="ark-inspector"><div class="ark-inspector-head"><button type="button" class="ark-panel-toggle" id="ark-toggle-right" aria-label="Collapse properties panel">⚙ Properties</button><span>PROPERTIES</span><strong id="ark-inspector-title">Select a section</strong></div><div id="ark-inspector-content" class="ark-inspector-content"><div class="ark-empty-inspector">Choose a component from the canvas to edit its settings.</div></div></aside></main>';
