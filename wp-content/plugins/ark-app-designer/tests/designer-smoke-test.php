@@ -1,6 +1,6 @@
 <?php
 /**
- * Source regression checks for ARK App Designer 1.8.1.
+ * Source regression checks for ARK App Designer 1.10.0.
  * Run: php tests/designer-smoke-test.php
  */
 $root = dirname(__DIR__);
@@ -18,6 +18,14 @@ if (strpos($source, "const VERSION = '" . $version . "'") === false) {
     exit(1);
 }
 $checks = [
+    'Search page is a configurable Designer page' => strpos($source, "'search' => ['title' => 'Search'") !== false,
+    'Default Heading Bar is a dedicated Designer menu, not a page component' => strpos($source, 'data-view="default_heading"') !== false && strpos($js, "state.view==='default_heading'") !== false,
+    'Default Heading Bar supports background image and page visibility' => strpos($js, 'background_image_url') !== false && strpos($js, 'visible_pages') !== false,
+    'Heading is not offered as an addable page component' => strpos($js, "if(type==='heading')return") !== false,
+    'Home search component has voice and camera toggles' => strpos($js, 'Show Voice Search button') !== false && strpos($js, 'Show Camera Search button') !== false,
+    'Heading action button controls are available' => strpos($js, 'Show action button') !== false && strpos($js, 'button_link_type') !== false,
+    'Search voice and camera controls are available' => strpos($js, 'Enable voice search') !== false && strpos($js, 'Enable camera / image text search') !== false,
+    'Recent searches and suggestions components are available' => strpos($source, "'recent_searches' =>") !== false && strpos($source, "'search_suggestions' =>") !== false,
     'new slider replaces legacy component catalog entry' => strpos($source, "'ark_live_slider' =>") !== false && strpos($source, "'banner_slider' =>") === false,
     'slider settings SQL table exists' => strpos($source, 'ark_live_sliders') !== false,
     'slide items SQL table exists' => strpos($source, 'ark_live_slider_items') !== false,
