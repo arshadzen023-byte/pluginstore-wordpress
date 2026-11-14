@@ -2,7 +2,7 @@ jQuery(function($){
   const state={config:ARKDesigner.config||{},page:'home',selected:null,view:'page',dirty:false};
   const liveCache={categories:null,products:null,targets:null,sliders:{},sliderPending:{},loading:false};
   const $pages=$('#ark-pages'),$components=$('#ark-components'),$preview=$('#ark-preview'),$inspector=$('#ark-inspector-content');
-  const labels={home:'Home page',categories:'Categories page',wishlist:'Wishlist page',product:'Product page',account:'Account page'};
+  const labels={home:'Home page',categories:'Categories page',search:'Search page',wishlist:'Wishlist page',product:'Product page',account:'Account page'};
   const collapseState={left:false,right:false};
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const page=()=>state.config.pages[state.page]||(state.config.pages[state.page]={title:labels[state.page],sections:[]});
@@ -25,6 +25,7 @@ jQuery(function($){
     $components.append(search);
 
     Object.entries(ARKDesigner.components||{}).forEach(([type,item])=>{
+      if(type==='heading')return; // Headings are part of the Default Heading Bar, not addable page components.
       const btn=$('<button class="ark-component-btn"></button>').attr('data-type',type);
       $('<span class="ark-component-icon"></span>').text(item.icon||'＋').appendTo(btn);
       $('<span></span>').append($('<b></b>').text(item.label)).append($('<small></small>').text(item.description||'')).appendTo(btn);
@@ -44,9 +45,16 @@ jQuery(function($){
       const heading=$('<div class="ark-heading-preview"></div>').css({display:'flex',alignItems:'center',gap:'9px',padding:'10px',borderRadius:(Number(s.corner_radius)||12)+'px',background:s.section_background||'#fff',backgroundImage:s.background_image_url?'url('+JSON.stringify(s.background_image_url)+')':'none',backgroundSize:'cover',backgroundPosition:'center'});
       if(s.show_icon!==false)$('<span></span>').text('✦').css({fontSize:'20px'}).appendTo(heading);
       if(s.show_title!==false)$('<b></b>').text(s.title||'Heading').appendTo(heading);
+      if(s.show_button===true)$('<button type="button"></button>').text((s.button_icon||'arrow_forward')+'  '+(s.button_label||'Explore')).appendTo(heading);
       if(s.subtitle)$('<small></small>').text(s.subtitle).appendTo(heading);
       card.append(heading);
-    }else     if(s.type==='search'){
+    }else if(s.type==='search_suggestions'){
+      const terms=Array.isArray(s.suggestions)?s.suggestions:[];
+      const chips=$('<div class="ark-preview-search-terms"></div>');
+      terms.slice(0,4).forEach(term=>$('<span></span>').text(term).appendTo(chips));
+      card.append(chips);
+    }
+    if(s.type==='search'){
       $('<div class="ark-real-search"></div>').text('⌕  '+(s.hints?.[0]||s.placeholder||'Search products…')).appendTo(card);
     }else if(s.type==='ark_live_slider'){
       const saved=liveCache.sliders[s.slider_key];
@@ -162,9 +170,18 @@ jQuery(function($){
     const theme=state.config.theme||{};
     $preview.css('background',theme.background||'#f5f7fb');
     const app=state.config.app||{};
-    const appHeader=$('<div class="ark-preview-app-header"></div>').css({background:theme.header_background||'#fff',color:theme.header_text||'#202733'});
-    if(app.icon_url)$('<img alt="">').attr('src',app.icon_url).css({width:'30px',height:'30px',objectFit:'cover',borderRadius:'8px',marginRight:'9px'}).appendTo(appHeader);
-    $('<span></span>').text(app.name||'GlowHit').appendTo(appHeader);
+    const h=state.config.default_heading||{};
+    const appHeader=$('<div class="ark-preview-app-header"></div>').css({
+      background:h.background_color||theme.header_background||'#fff',color:h.title_color||theme.header_text||'#202733',
+      minHeight:(Number(h.height)||64)+'px',position:'relative',overflow:'hidden'
+    });
+    if(h.show_background_image===true&&h.background_image_url){
+      appHeader.css({backgroundImage:'url('+JSON.stringify(h.background_image_url)+')',backgroundSize:h.background_image_fit==='contain'?'contain':(h.background_image_fit==='fill'?'100% 100%':'cover'),backgroundPosition:'center',backgroundRepeat:'no-repeat'});
+    }
+    if(h.show_app_logo!==false&&app.icon_url)$('<img alt="">').attr('src',app.icon_url).css({width:'30px',height:'30px',objectFit:'cover',borderRadius:'8px',marginRight:'9px'}).appendTo(appHeader);
+    if(h.show_icon===true)$('<span></span>').text(h.icon_name||'storefront').css({marginRight:'8px',fontWeight:800,color:h.icon_color||'#202733'}).appendTo(appHeader);
+    if(h.show_title!==false)$('<span></span>').text(h.title||app.name||'GlowHit').appendTo(appHeader);
+    if(h.show_button===true)$('<button type="button"></button>').text((h.button_icon||'arrow_forward')+' '+(h.button_label||'Explore')).css({marginLeft:'auto',border:0,borderRadius:'9px',padding:'8px 10px',background:h.button_background||'#2874F0',color:h.button_text_color||'#fff'}).appendTo(appHeader);
     $preview.append(appHeader);
     sections().forEach((s,i)=>{if(s.visible!==false)$preview.append(previewSection(s,i));});
     $('<div class="ark-preview-add">＋ Add a component from the left panel</div>').appendTo($preview);
@@ -220,6 +237,7 @@ jQuery(function($){
       else if(state.view==='splash') target=state.config.splash||(state.config.splash={});
       if(state.view==='navigation') target=state.config.navigation||(state.config.navigation={});
       if(state.view==='app') target=state.config.app||(state.config.app={});
+      if(state.view==='default_heading') target=state.config.default_heading||(state.config.default_heading={enabled:true,visible_pages:['home','categories','wishlist','account']});
       if(!target)return;
       const fieldValue=type==='checkbox'?$(this).is(':checked'):(type==='number'?Number($(this).val()):$(this).val());
       target[key]=key==='pages' && (target===state.config.loading||target===state.config.celebration)?String(fieldValue).split(',').map(v=>v.trim()).filter(Boolean):fieldValue;
@@ -250,10 +268,11 @@ jQuery(function($){
     select.val(value??options[0]?.[0]??'').on('change',function(){
       let target=selected();
       if(state.view==='app') target=state.config.app||(state.config.app={});
+      if(state.view==='default_heading') target=state.config.default_heading||(state.config.default_heading={enabled:true,visible_pages:['home','categories','wishlist','account']});
       if(state.view==='theme') target=state.config.theme||(state.config.theme={});
       if(state.view==='splash') target=state.config.splash||(state.config.splash={});
       if(!target)return;
-      target[key]=$(this).val();markDirty();renderPreview();
+      target[key]=$(this).val();markDirty();renderPreview();if(state.view==='default_heading')renderInspector();
     });
     wrap.append(select);
     if(hint)$('<div class="description"></div>').text(hint).appendTo(wrap);
@@ -530,6 +549,77 @@ jQuery(function($){
   function renderInspector(){
     const s=selected();$inspector.empty();
     if(state.view==='source'){renderSourceEditor();return;}
+    if(state.view==='icon_visibility'){
+      $('#ark-inspector-title').text('Icon visibility by page');
+      const app=state.config.app||(state.config.app={});
+      const map=app.icon_visibility||(app.icon_visibility={});
+      const pages=['home','search','categories','product','wishlist','account'];
+      const iconsByPage={home:['app_icon','app_name','page_title','refresh','notifications','cart','default_heading_icon','default_heading_title','default_heading_button','voice_search','camera_search'],categories:['app_icon','app_name','page_title','refresh','notifications','cart','default_heading_icon','default_heading_title','default_heading_button'],wishlist:['app_icon','app_name','page_title','refresh','notifications','cart','default_heading_icon','default_heading_title','default_heading_button'],account:['app_icon','app_name','page_title','refresh','notifications','cart','default_heading_icon','default_heading_title','default_heading_button'],search:['cart','voice_search','camera_search'],product:['page_title','cart','wishlist','share','add_to_cart','buy_now']};
+      const panel=$('<div class="ark-icon-visibility"></div>');
+      pages.forEach(pageKey=>{
+        const group=$('<div class="ark-icon-page"></div>');
+        $('<b></b>').text(pageKey.charAt(0).toUpperCase()+pageKey.slice(1)+' page').appendTo(group);
+        (iconsByPage[pageKey]||['cart']).forEach(iconKey=>{
+          if(!map[pageKey])map[pageKey]={};
+          const label=$('<label></label>');
+          const cb=$('<input type="checkbox">').prop('checked',map[pageKey][iconKey]!==false);
+          cb.on('change',()=>{map[pageKey][iconKey]=cb.is(':checked');markDirty();renderPreview();});
+          label.append(cb,document.createTextNode(' '+iconKey.charAt(0).toUpperCase()+iconKey.slice(1)));
+          group.append(label);
+        });
+        panel.append(group);
+      });
+      $inspector.append(panel);
+      return;
+    }
+    if(state.view==='default_heading'){
+      $('#ark-inspector-title').text('Default Heading Bar');
+      const h=state.config.default_heading||(state.config.default_heading={
+        enabled:true,visible_pages:['home','categories','wishlist','account'],show_app_logo:true,show_app_name:true,
+        show_icon:false,icon_name:'storefront',show_title:true,title:'',show_button:false,button_label:'Explore',
+        button_icon:'arrow_forward',button_link_type:'in_app',button_url:'page:categories',
+        background_color:'#FFFFFF',background_image_url:'',show_background_image:false,background_image_fit:'cover',
+        title_color:'#202733',icon_color:'#202733',button_background:'#2874F0',button_text_color:'#FFFFFF',height:64
+      });
+      $inspector.append(field('Enable Default Heading Bar','enabled',h.enabled!==false,'checkbox'));
+      $inspector.append(field('Show existing app logo','show_app_logo',h.show_app_logo!==false,'checkbox'));
+      $inspector.append(field('Show existing app name','show_app_name',h.show_app_name!==false,'checkbox'));
+      $inspector.append(field('Show Material Icon','show_icon',h.show_icon===true,'checkbox'));
+      $inspector.append(field('Material Icon name','icon_name',h.icon_name||'storefront','text','Examples: storefront, home, category, local_offer, bolt, verified, support_agent.'));
+      $inspector.append(field('Show heading title','show_title',h.show_title!==false,'checkbox'));
+      $inspector.append(field('Heading title (blank = page/app name)','title',h.title||''));
+      $inspector.append(field('Heading title colour','title_color',h.title_color||'#202733','color'));
+      $inspector.append(field('Heading icon colour','icon_color',h.icon_color||'#202733','color'));
+      $inspector.append(field('Default heading background colour','background_color',h.background_color||'#FFFFFF','color'));
+      $inspector.append(field('Show background image','show_background_image',h.show_background_image===true,'checkbox'));
+      $inspector.append(field('Background image / GIF','background_image_url',h.background_image_url||'','url','Choose from Media Library. The image is used behind the existing app header.'));
+      $inspector.append(choiceField('Background image fit','background_image_fit',h.background_image_fit||'cover',[['cover','Cover'],['contain','Contain'],['fill','Stretch']]));
+      $inspector.append(field('Heading height (px)','height',h.height||64,'number'));
+      $inspector.append(field('Show new action button','show_button',h.show_button===true,'checkbox'));
+      $inspector.append(field('Button title','button_label',h.button_label||'Explore'));
+      $inspector.append(field('Button Material Icon','button_icon',h.button_icon||'arrow_forward','text','Examples: arrow_forward, chevron_right, shopping_bag, bolt, local_offer.'));
+      const mode=h.button_link_type||'in_app';
+      $inspector.append(choiceField('Button link type','button_link_type',mode,[['in_app','In-app page / product'],['chrome','Website'],['deeplink','App deep link']]));
+      if(mode==='in_app')$inspector.append(inAppTargetField('Button destination',h.button_url||'page:categories',value=>{h.button_url=value;markDirty();renderPreview();},'Select a native page or WooCommerce product.'));
+      else $inspector.append(field('Button URL / deep link','button_url',h.button_url||'',mode==='chrome'?'url':'text'));
+      $inspector.append(field('Button background colour','button_background',h.button_background||'#2874F0','color'));
+      $inspector.append(field('Button text colour','button_text_color',h.button_text_color||'#FFFFFF','color'));
+      const pageWrap=$('<div class="ark-field"><label>Visible on pages</label></div>');
+      const pageList=$('<div class="ark-icon-visibility"></div>');
+      ['home','categories','search','wishlist','account'].forEach(key=>{
+        const label=$('<label></label>');
+        const cb=$('<input type="checkbox">').prop('checked',Array.isArray(h.visible_pages)?h.visible_pages.includes(key):key!=='search');
+        cb.on('change',()=>{
+          if(!Array.isArray(h.visible_pages))h.visible_pages=['home','categories','wishlist','account'];
+          h.visible_pages=cb.is(':checked')?[...new Set([...h.visible_pages,key])]:h.visible_pages.filter(item=>item!==key);
+          markDirty();renderPreview();
+        });
+        label.append(cb,document.createTextNode(' '+labels[key]));pageList.append(label);
+      });
+      pageWrap.append(pageList);$inspector.append(pageWrap);
+      $('<p class="description">This edits the app’s existing top heading bar. It does not add a Heading component to the page. Existing logo, title and app actions remain available.</p>').appendTo($inspector);
+      return;
+    }
     if(state.view==='app'){
       $('#ark-inspector-title').text('App identity');
       const app=state.config.app||(state.config.app={});
@@ -620,6 +710,41 @@ jQuery(function($){
       $('<p class="description">In-app page: home/categories/product/account. Deep link: app URL scheme. Chrome: HTTPS website URL.</p>').appendTo($inspector);
       return;
     }
+    if(!s && state.page==='search'){
+      $('#ark-inspector-title').text('Search page settings');
+      const settings=page().search_settings||(page().search_settings={
+        placeholder:'Search products...',show_voice_search:true,show_camera_search:true,
+        show_cart:true,voice_locale:'en_IN',top_bar_background:'#D7E6FF',
+        search_bar_background:'#FFFFFF',suggestion_limit:8
+      });
+      const pageField=(label,key,value,type='text',options=[])=>{
+        const wrap=$('<div class="ark-field"></div>');
+        $('<label></label>').text(label).appendTo(wrap);
+        let input;
+        if(type==='checkbox')input=$('<input type="checkbox">').prop('checked',value!==false);
+        else if(type==='color')input=$('<input type="color">').val(value||'#FFFFFF');
+        else if(type==='select'){
+          input=$('<select></select>');
+          options.forEach(([v,l])=>input.append($('<option></option>').val(v).text(l)));
+          input.val(value||options[0]?.[0]||'');
+        }else input=$('<input>').attr('type',type).val(value??'');
+        input.on('input change',function(){
+          settings[key]=type==='checkbox'?$(this).is(':checked'):(type==='number'?Number($(this).val()):$(this).val());
+          markDirty();renderPreview();
+        });
+        wrap.append(input);$inspector.append(wrap);
+      };
+      pageField('Search placeholder','placeholder',settings.placeholder||'Search products...');
+      pageField('Enable voice search','show_voice_search',settings.show_voice_search!==false,'checkbox');
+      pageField('Enable camera search','show_camera_search',settings.show_camera_search!==false,'checkbox');
+      pageField('Show Cart button','show_cart',settings.show_cart!==false,'checkbox');
+      pageField('Voice language','voice_locale',settings.voice_locale||'en_IN','select',[['en_IN','English (India)'],['hi_IN','Hindi (India)']]);
+      pageField('Top bar background','top_bar_background',settings.top_bar_background||'#D7E6FF','color');
+      pageField('Search field background','search_bar_background',settings.search_bar_background||'#FFFFFF','color');
+      pageField('Maximum fast suggestions','suggestion_limit',settings.suggestion_limit||8,'number');
+      $('<p class="description">Drag components onto the Search page canvas to control Recent Searches, product suggestions, Recommended Stores and Trending sections. The search field stays fixed at the top while its settings are edited here.</p>').appendTo($inspector);
+      return;
+    }
     if(!s){$('#ark-inspector-title').text('Select a section');$inspector.html('<div class="ark-empty-inspector">Choose a component from the canvas to edit its settings.</div>');return;}
     $('#ark-inspector-title').text(ARKDesigner.components[s.type]?.label||s.type);
     $inspector.append(field('Section title','title',s.title||''));
@@ -672,14 +797,31 @@ jQuery(function($){
         ['contain','Show full product image'],['cover','Fill and crop']
       ]));
     }
+    if(s.type==='search'){
+      $inspector.append(field('Search placeholder','placeholder',s.placeholder||'Search products...'));
+      $inspector.append(field('Open customizable Search Page','open_search_page',s.open_search_page!==false,'checkbox'));
+      $inspector.append(field('Show Voice Search button','show_voice_search',s.show_voice_search!==false,'checkbox'));
+      $inspector.append(field('Show Camera Search button','show_camera_search',s.show_camera_search!==false,'checkbox'));
+      $('<p class="description">The search box opens the separate Search Page. Voice and camera buttons open that page and start the selected action.</p>').appendTo($inspector);
+    }
     if(s.type==='heading'){
       $inspector.append(field('Show heading icon','show_icon',s.show_icon!==false,'checkbox'));
       $inspector.append(field('Material icon name','icon_name',s.icon_name||'local_offer','text','Examples: local_offer, bolt, star, verified, new_releases.'));
       $inspector.append(field('Show heading name','show_title',s.show_title!==false,'checkbox'));
+      $inspector.append(field('Show action button','show_button',s.show_button===true,'checkbox'));
+      $inspector.append(field('Button title','button_label',s.button_label||'Explore'));
+      $inspector.append(choiceField('Button icon','button_icon',s.button_icon||'arrow_forward',[['arrow_forward','Arrow right'],['chevron_right','Chevron right'],['north_east','Open / diagonal'],['open_in_new','Open in new'],['shopping_bag','Shopping bag'],['local_offer','Offer tag'],['bolt','Lightning'],['star','Star'],['visibility','View']]));
+      const buttonMode=s.button_link_type||'in_app';
+      $inspector.append(choiceField('Button link type','button_link_type',buttonMode,[['in_app','In-app page / product'],['chrome','Website'],['deeplink','App deep link']]));
+      if(buttonMode==='in_app')$inspector.append(inAppTargetField('Button destination',s.button_url||'page:home',value=>{s.button_url=value;markDirty();},'Choose the page or product opened by this heading button.'));
+      else $inspector.append(field('Button destination URL / deep link','button_url',s.button_url||'',buttonMode==='chrome'?'url':'text'));
+      $inspector.append(field('Button background colour','button_background',s.button_background||'#2874F0','color'));
+      $inspector.append(field('Button text colour','button_text_color',s.button_text_color||'#FFFFFF','color'));
+      $inspector.append(field('Heading background colour','section_background',s.section_background||'#FFFFFF','color'));
       $inspector.append(choiceField('Heading animation','heading_animation',s.heading_animation||'none',[['none','None'],['fade','Fade'],['slide','Slide'],['pulse','Pulse'],['gradient','Animated gradient']]));
       $inspector.append(choiceField('Icon animation','heading_icon_animation',s.heading_icon_animation||'none',[['none','None'],['pulse','Pulse'],['rotate','Rotate'],['bounce','Bounce']]));
       $inspector.append(field('Background image / GIF URL','background_image_url',s.background_image_url||'','url','Animated GIFs play natively as a background image.'));
-      const pages=['home','categories','product','account','wishlist'];
+      const pages=['home','search','categories','product','account','wishlist'];
       const visibility=$('<div class="ark-field"><label>Visible on pages</label><div class="ark-heading-pages"></div></div>');
       pages.forEach(key=>{
         const label=$('<label style="display:flex;gap:8px;align-items:center;margin:6px 0"></label>');
@@ -805,10 +947,19 @@ jQuery(function($){
       $inspector.append(field('Compact on mobile','compact_on_mobile',s.compact_on_mobile===true,'checkbox'));
     }
     if((('subtitle'in s)&&s.type!=='address_selector')||['offer_banner','heading','text'].includes(s.type))$inspector.append(field('Subtitle / text','subtitle',s.subtitle||s.text||'','textarea'));
+    if(s.type==='search_suggestions'){
+      $inspector.append(field('Popular search terms JSON','suggestions_json',JSON.stringify(s.suggestions||['mobiles under 15000','mobile 5g','shoes for men'],null,2),'textarea','Enter a JSON array of search terms.'));
+      $inspector.find('[data-field="suggestions_json"]').on('change',function(){try{s.suggestions=JSON.parse($(this).val());markDirty();renderPreview();}catch(e){toast('Search terms JSON is invalid.',true);}});
+    }
     if(s.type==='search'){
       $inspector.append(field('Search placeholder','placeholder',s.placeholder||'Search products...'));
       $inspector.append(field('Rotating hints JSON','hints_json',JSON.stringify(s.hints||['Search Watch','Search TV','Search Plugin'],null,2),'textarea','Example: ["Search Watch","Search TV","Search Plugin"]'));
       $inspector.append(field('Hint change speed (ms)','hint_interval_ms',s.hint_interval_ms||2200,'number'));
+      $inspector.append(field('Open Search page when tapped','open_search_page',s.open_search_page!==false,'checkbox'));
+      $inspector.append(field('Fast product suggestions with images','show_fast_suggestions',s.show_fast_suggestions!==false,'checkbox'));
+      $inspector.append(field('Enable voice search','show_voice_search',s.show_voice_search!==false,'checkbox'));
+      $inspector.append(field('Enable camera / image text search','show_camera_search',s.show_camera_search!==false,'checkbox'));
+      $inspector.append(field('Suggestion count','suggestion_limit',s.suggestion_limit||8,'number'));
       $inspector.find('[data-field="hints_json"]').on('change',function(){try{s.hints=JSON.parse($(this).val());markDirty();renderPreview();}catch(e){toast('Hints JSON is invalid.',true);}});
     }
     if(s.type==='image'){
@@ -889,7 +1040,7 @@ jQuery(function($){
     ]).then(([cats,products,targets])=>{liveCache.categories=Array.isArray(cats)?cats:[];liveCache.products=Array.isArray(products)?products:[];liveCache.targets=targets;renderPreview();if(state.selected)renderInspector();})
     .finally(()=>{liveCache.loading=false;});
   }
-  function render(){renderPages();renderPreview();renderInspector();$('#ark-canvas-title').text(labels[state.page]);}
+  function render(){renderPages();renderPreview();renderInspector();$('#ark-canvas-title').text(labels[state.page]||state.page);}
   function addComponent(type){
     const id='section-'+Date.now();
     const defaults={id,type,visible:true,title:ARKDesigner.components[type]?.label||type};
@@ -898,7 +1049,7 @@ jQuery(function($){
     if(type==='heading')Object.assign(defaults,{show_icon:true,icon_name:'local_offer',show_title:true,text_alignment:'left',heading_animation:'none',heading_icon_animation:'none',visible_pages:[state.page],tap_link_type:'in_app'});
     if(type==='product_gallery')Object.assign(defaults,{gallery_height:390,gallery_fit:'contain',auto_slide:true,auto_slide_interval_ms:4200,show_dots:true,allow_zoom:true,show_wishlist:true,show_share:true,action_layout:'vertical',action_button_size:44,action_icon_size:21,action_gap:9,action_offset_top:14,action_offset_right:14,action_background:'#FFFFFF',action_icon_color:'#263248'});
     if(type==='product_recommended')Object.assign(defaults,{promo_autoplay:true,promo_interval_ms:4000,promo_card_height:112,promo_card_width:238,promo_image_size:72,show_ad_badge:true,ad_label:'AD',show_discount:true,show_original_price:true});
-    if(type==='search')Object.assign(defaults,{placeholder:'Search products...',hints:['Search Watch','Search TV','Search Plugin'],hint_interval_ms:2200});
+    if(type==='search')Object.assign(defaults,{placeholder:'Search products...',hints:['Search Watch','Search TV','Search Plugin'],hint_interval_ms:2200,open_search_page:true,show_voice_search:true,show_camera_search:true});
     if(type==='product_grid'||type==='product_carousel')Object.assign(defaults,{link_type:'product',destination_url:'',category_id:0});
     if(type==='address_selector')Object.assign(defaults,{title:'Delivery address',subtitle:'Choose where your order should arrive.',address_style:'flipkart',show_edit:true,show_phone:true,show_city_pin:true,allow_address_switch:true,compact_on_mobile:false});
     if(type==='account_menu')Object.assign(defaults,{items:[{title:'My Orders',subtitle:'Track and view purchases',icon:'receipt',action:'orders'},{title:'My Downloads',subtitle:'Your purchased files',icon:'download',action:'downloads'},{title:'Edit Address',subtitle:'Manage delivery address',icon:'location',action:'address'},{title:'Edit Account Details',subtitle:'Update your profile',icon:'person',action:'profile'},{title:'Sign Out',subtitle:'Sign out of this device',icon:'logout',action:'logout'}]});
@@ -958,5 +1109,17 @@ jQuery(function($){
   $('#ark-publish').on('click',()=>save(true));
   $('#ark-preview-refresh').on('click',renderPreview);
   $('#ark-version-label').text('Published v'+(state.config.version||1)+' · Draft editor');
+  let removedLegacyHeadings=0;
+  Object.values(state.config.pages||{}).forEach(pageData=>{
+    if(!pageData||!Array.isArray(pageData.sections))return;
+    const before=pageData.sections.length;
+    pageData.sections=pageData.sections.filter(section=>section?.type!=='heading');
+    removedLegacyHeadings+=before-pageData.sections.length;
+  });
+  if(removedLegacyHeadings){
+    state.dirty=true;
+    $('#ark-version-label').text('Removed obsolete Heading blocks · Publish to sync');
+  }
   renderComponents();render();loadLivePreview();
+  if(removedLegacyHeadings)toast('Removed '+removedLegacyHeadings+' obsolete Heading component(s). Default Heading Bar is now managed from its own menu.');
 });
