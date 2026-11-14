@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Designer
  * Description: Server-driven visual app designer for ARK Native / GlowHit Flutter apps, including live layout, navigation, theme and in-app splash configuration.
- * Version: 1.8.1
+ * Version: 1.9.0
  * Author: ARK
  * Requires PHP: 7.4
  */
@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class ARK_App_Designer {
-    const VERSION = '1.8.1';
+    const VERSION = '1.9.0';
     const PUBLISHED = 'ark_app_designer_published';
     const DRAFT = 'ark_app_designer_draft';
     const REVISIONS = 'ark_app_designer_revisions';
@@ -43,7 +43,7 @@ final class ARK_App_Designer {
             'schema_version' => 1,
             'version' => 1,
             'updated_at' => gmdate('c'),
-            'app' => ['name' => 'GlowHit', 'tagline' => 'Shop smarter', 'icon_url' => '', 'logo_url' => '', 'splash_image_url' => '', 'splash_enabled' => true, 'splash_duration_ms' => 1800, 'splash_fit' => 'contain', 'splash_background' => '#F5F7FB'],
+            'app' => ['name' => 'GlowHit', 'tagline' => 'Shop smarter', 'icon_url' => '', 'logo_url' => '', 'show_icon' => true, 'show_name' => true, 'show_refresh' => true, 'show_notifications' => true, 'show_cart' => true, 'header_icon_animation' => 'none', 'splash_image_url' => '', 'splash_enabled' => true, 'splash_duration_ms' => 1800, 'splash_fit' => 'contain', 'splash_background' => '#F5F7FB'],
             
             'theme' => [
                 'primary' => '#2874F0',
@@ -710,6 +710,12 @@ final class ARK_App_Designer {
                 $item['type'] = $type;
                 $item['visible'] = !array_key_exists('visible', $section) || (bool) $section['visible'];
                 if (isset($section['image_url'])) $item['image_url'] = $this->clean_url($section['image_url']);
+                if (isset($section['background_image_url'])) $item['background_image_url'] = $this->clean_url($section['background_image_url']);
+                if (isset($section['visible_pages']) && is_array($section['visible_pages'])) $item['visible_pages'] = array_values(array_intersect(['home','categories','product','account','wishlist'], array_map('sanitize_key', $section['visible_pages'])));
+                $item['show_icon'] = !array_key_exists('show_icon', $section) || (bool) $section['show_icon'];
+                $item['show_title'] = !array_key_exists('show_title', $section) || (bool) $section['show_title'];
+                $item['heading_animation'] = in_array(($section['heading_animation'] ?? 'none'), ['none','fade','slide','pulse','gradient'], true) ? ($section['heading_animation'] ?? 'none') : 'none';
+                $item['heading_icon_animation'] = in_array(($section['heading_icon_animation'] ?? 'none'), ['none','pulse','rotate','bounce'], true) ? ($section['heading_icon_animation'] ?? 'none') : 'none';
                 $tap_mode = in_array(($section['tap_link_type'] ?? 'in_app'), ['in_app','deeplink','chrome'], true)
                     ? ($section['tap_link_type'] ?? 'in_app') : 'in_app';
                 $item['tap_link_type'] = $tap_mode;
@@ -881,6 +887,12 @@ final class ARK_App_Designer {
             'tagline' => sanitize_text_field($app['tagline'] ?? ''),
             'icon_url' => $this->clean_url($app['icon_url'] ?? ''),
             'logo_url' => $this->clean_url($app['logo_url'] ?? ''),
+            'show_icon' => !array_key_exists('show_icon', $app) || (bool) $app['show_icon'],
+            'show_name' => !array_key_exists('show_name', $app) || (bool) $app['show_name'],
+            'show_refresh' => !array_key_exists('show_refresh', $app) || (bool) $app['show_refresh'],
+            'show_notifications' => !array_key_exists('show_notifications', $app) || (bool) $app['show_notifications'],
+            'show_cart' => !array_key_exists('show_cart', $app) || (bool) $app['show_cart'],
+            'header_icon_animation' => in_array(($app['header_icon_animation'] ?? 'none'), ['none','pulse','rotate','bounce'], true) ? ($app['header_icon_animation'] ?? 'none') : 'none',
             'splash_image_url' => $splash_image_url,
             'splash_enabled' => $splash_enabled,
             'splash_duration_ms' => $splash_duration,
