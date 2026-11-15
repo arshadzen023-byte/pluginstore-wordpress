@@ -1,6 +1,6 @@
 <?php
 /**
- * Source regression checks for ARK App Designer 1.14.0.
+ * Source regression checks for ARK App Designer 1.17.2.
  * Run: php tests/designer-smoke-test.php
  */
 $root = dirname(__DIR__);
@@ -9,6 +9,11 @@ $js = file_get_contents($root . '/assets/admin.js');
 $css = file_get_contents($root . '/assets/admin.css');
 $flutter = file_get_contents($root . '/../../flutter-app/lib/features/designer/dynamic_page_renderer.dart');
 $home = file_get_contents($root . '/../../flutter-app/lib/features/home/home_screen.dart');
+$shell = file_get_contents($root . '/../../flutter-app/lib/core/app_page_shell.dart');
+$dynamic = file_get_contents($root . '/../../flutter-app/lib/features/designer/dynamic_page_renderer.dart');
+$page_shell = file_get_contents($root . '/../../flutter-app/lib/core/app_page_shell.dart');
+$app_theme = file_get_contents($root . '/../../flutter-app/lib/core/app_theme.dart');
+$app = file_get_contents($root . '/../../flutter-app/lib/app.dart');
 
 if (!preg_match('/^\\s*\\* Version:\\s*([0-9.]+)/m', $source, $match)) {
     fwrite(STDERR, "Could not read Designer version." . PHP_EOL);
@@ -61,6 +66,14 @@ $checks = [
     'Designer component alias is restored while native layout variant is preserved' => strpos($source, "'designer_component_type'") !== false && strpos($js, 'designer_component_type') !== false,
     'Banner SQL images support grid list and scroll variants in Flutter' => strpos(file_get_contents($root . '/../../flutter-app/lib/features/designer/dynamic_page_renderer.dart'), "variant == 'grid'") !== false && strpos(file_get_contents($root . '/../../flutter-app/lib/features/designer/dynamic_page_renderer.dart'), "variant == 'scroll'") !== false,
     'Navigation has four styles and persists the selected style' => strpos($js, 'Floating rounded bar') !== false && strpos($source, "navigation['style']") !== false,
+    'In-app wishlist categories and account open their real HomeScreen tabs' => strpos($dynamic, 'HomeScreen(initialTab: 1)') !== false && strpos($dynamic, 'HomeScreen(initialTab: 2)') !== false && strpos($dynamic, 'HomeScreen(initialTab: 3)') !== false && strpos($home, 'widget.initialTab') !== false,
+    'Standalone page shell includes a real heading and system-bar style' => strpos($page_shell, 'AnnotatedRegion<SystemUiOverlayStyle>') !== false && strpos($page_shell, "title: Text(") !== false && strpos($page_shell, 'appSystemUiOverlayStyle') !== false,
+    'Published global theme applies readable foreground on dark backgrounds' => strpos($app, 'appThemeForDesign') !== false && strpos($app_theme, 'onSurface: foreground') !== false && strpos($app_theme, '_contrastForeground') !== false,
+    'Status bar and navigation bar follow published page colours' => strpos($app, 'AnnotatedRegion<SystemUiOverlayStyle>') !== false && strpos($app_theme, 'statusBarIconBrightness') !== false && strpos($app_theme, 'systemNavigationBarIconBrightness') !== false,
+    'Native entrance animations support bounce rotate and 3D flip' => strpos($dynamic, "case 'bounce'") !== false && strpos($dynamic, "case 'rotate'") !== false && strpos($dynamic, "case 'flip'") !== false,
+    'Entrance animations replay for each published design version' => strpos($dynamic, 'AppDesignStore.instance.version') !== false && strpos($dynamic, 'entrance_duration_ms') !== false,
+    'Designer exposes new entrance animation choices and duration' => strpos($js, "['bounce','Bounce']") !== false && strpos($js, "['flip','3D flip']") !== false && strpos($js, 'Entrance duration (ms)') !== false,
+    'Published sections validate entrance animation options and duration' => strpos($source, "'bounce','rotate','flip'") !== false && strpos($source, "'entrance_duration_ms'") !== false,
     'Config migration fills missing defaults without replacing saved arrays' => strpos($source, 'merge_config_defaults') !== false && strpos($source, 'ark_app_designer_config_schema') !== false,
     'Admin assets use file modification cache-busters' => strpos($source, 'filemtime($js_path)') !== false && strpos($source, 'filemtime($css_path)') !== false,
     'Default Heading Bar has native animation controls' => strpos($js, "Heading bar animation") !== false && strpos($source, "'animation' => 'none'") !== false,
@@ -85,6 +98,9 @@ $checks = [
     'Product destination opens ProductScreen when no parent callback is supplied' => strpos($flutter, 'widget.onProductTap != null') !== false && strpos($flutter, 'ProductScreen(id: id)') !== false,
     'Custom pages use configured app background and an empty-page fallback' => strpos($flutter, 'backgroundColor: pageBackground') !== false && strpos($flutter, 'This page is ready. Add components in ARK App Designer.') !== false,
     'Home website and deep links are normalized before opening' => strpos($home, 'https://') !== false && strpos($home, 'LaunchMode.externalApplication') !== false,
+    'In-app links normalize legacy page keys and use full native destination pages' => strpos($flutter, 'nativePageKeys') !== false && strpos($flutter, "case 'wishlist':") !== false && strpos($flutter, "case 'account':") !== false && strpos($flutter, "case 'categories':") !== false && strpos($flutter, 'HomeScreen(initialTab: 1)') !== false && strpos($flutter, 'HomeScreen(initialTab: 2)') !== false && strpos($flutter, 'HomeScreen(initialTab: 3)') !== false && strpos($flutter, "lowerTarget.startsWith('page:')") !== false,
+    'Legacy entrance animation aliases are accepted and mapped before rendering' => strpos($source, "'fade_in' => 'fade'") !== false && strpos($flutter, "'slide_up': 'slide'") !== false,
+    'Standalone native page shell synchronizes Designer header and system status bar' => strpos($shell, 'statusBarColor: header') !== false && strpos($shell, 'heading[\'background_color\']') !== false && strpos($shell, 'SizedBox.expand(child: child)') !== false,
 
 ];
 $failed = [];
