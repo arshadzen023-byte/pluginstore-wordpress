@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Designer
  * Description: Server-driven visual app designer for ARK Native / GlowHit Flutter apps, including live layout, navigation, theme and in-app splash configuration.
- * Version: 1.12.1
+ * Version: 1.15.0
  * Author: ARK
  * Requires PHP: 7.4
  */
@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class ARK_App_Designer {
-    const VERSION = '1.12.1';
+    const VERSION = '1.15.0';
     const PUBLISHED = 'ark_app_designer_published';
     const DRAFT = 'ark_app_designer_draft';
     const REVISIONS = 'ark_app_designer_revisions';
@@ -40,7 +40,7 @@ final class ARK_App_Designer {
 
     public static function default_config() {
         return [
-            'schema_version' => 1,
+            'schema_version' => 3,
             'version' => 1,
             'updated_at' => gmdate('c'),
             'app' => ['name' => 'GlowHit', 'tagline' => 'Shop smarter', 'icon_url' => '', 'logo_url' => '', 'show_icon' => true, 'show_name' => true, 'show_refresh' => true, 'show_notifications' => true, 'show_cart' => true, 'header_icon_animation' => 'none', 'splash_image_url' => '', 'splash_enabled' => true, 'splash_duration_ms' => 1800, 'splash_fit' => 'contain', 'splash_background' => '#F5F7FB'],
@@ -51,7 +51,7 @@ final class ARK_App_Designer {
                 'button_icon' => 'arrow_forward', 'button_link_type' => 'in_app', 'button_url' => 'page:categories',
                 'background_color' => '#FFFFFF', 'background_image_url' => '', 'show_background_image' => false,
                 'background_image_fit' => 'cover', 'title_color' => '#202733', 'icon_color' => '#202733',
-                'button_background' => '#2874F0', 'button_text_color' => '#FFFFFF', 'height' => 64,
+                'button_background' => '#2874F0', 'button_text_color' => '#FFFFFF', 'height' => 64, 'animation' => 'none', 'background_effect' => 'none', 'background_image_id' => 0, 'position_index' => -1,
             ],
             
             'theme' => [
@@ -83,8 +83,9 @@ final class ARK_App_Designer {
             ],
             'loading' => [
                 'enabled' => true,
-                'animation_url' => 'https://pluginstore.shop/wp-content/themes/ark-material-commerce/assets/animations/loading.json',
+                'animation_url' => '',
                 'duration_ms' => 900,
+                'size' => 58,
                 'pages' => ['home','categories','product','account'],
             ],
             'celebration' => [
@@ -142,41 +143,6 @@ final class ARK_App_Designer {
         ];
     }
 
-    /**
-     * Upgrade older saved Draft/Published payloads in memory before editing or
-     * serving them. Keep saved section lists intact; merge only object-shaped
-     * settings so newly introduced controls never disappear on an unrelated save.
-     */
-    private function merge_config_defaults($saved) {
-        $defaults = self::default_config();
-        if (!is_array($saved)) $saved = [];
-        $config = array_merge($defaults, $saved);
-
-        foreach (['app', 'theme', 'default_heading', 'splash', 'loading', 'celebration', 'navigation'] as $key) {
-            $existing = is_array($saved[$key] ?? null) ? $saved[$key] : [];
-            $config[$key] = array_merge(is_array($defaults[$key] ?? null) ? $defaults[$key] : [], $existing);
-        }
-
-        $savedPages = is_array($saved['pages'] ?? null) ? $saved['pages'] : [];
-        $config['pages'] = [];
-        foreach ($defaults['pages'] as $pageKey => $defaultPage) {
-            $existingPage = is_array($savedPages[$pageKey] ?? null) ? $savedPages[$pageKey] : [];
-            $page = array_merge($defaultPage, $existingPage);
-            if ($pageKey === 'search') {
-                $existingSettings = is_array($existingPage['search_settings'] ?? null) ? $existingPage['search_settings'] : [];
-                $page['search_settings'] = array_merge($defaultPage['search_settings'], $existingSettings);
-            }
-            // A missing section list gets safe defaults; an intentionally empty list stays empty.
-            if (!array_key_exists('sections', $existingPage) || !is_array($existingPage['sections'])) {
-                $page['sections'] = $defaultPage['sections'];
-            } else {
-                $page['sections'] = array_values($existingPage['sections']);
-            }
-            $config['pages'][$pageKey] = $page;
-        }
-        return $config;
-    }
-
     public function admin_menu() {
         add_menu_page(
             'ARK App Designer',
@@ -195,11 +161,11 @@ final class ARK_App_Designer {
         wp_enqueue_script('jquery-ui-sortable');
         $css_path = plugin_dir_path(__FILE__) . 'assets/admin.css';
         $js_path = plugin_dir_path(__FILE__) . 'assets/admin.js';
-        $css_version = file_exists($css_path) ? (string) filemtime($css_path) : self::VERSION;
-        $js_version = file_exists($js_path) ? (string) filemtime($js_path) : self::VERSION;
+        $css_version = file_exists($css_path) ? self::VERSION . '.' . filemtime($css_path) : self::VERSION;
+        $js_version = file_exists($js_path) ? self::VERSION . '.' . filemtime($js_path) : self::VERSION;
         wp_enqueue_style('ark-app-designer-admin', plugin_dir_url(__FILE__) . 'assets/admin.css', [], $css_version);
         wp_enqueue_script('ark-app-designer-admin', plugin_dir_url(__FILE__) . 'assets/admin.js', ['jquery'], $js_version, true);
-        $config = $this->merge_config_defaults(get_option(self::DRAFT, get_option(self::PUBLISHED, self::default_config())));
+        $config = $this->current_editor_config();
         wp_localize_script('ark-app-designer-admin', 'ARKDesigner', [
             'restUrl' => esc_url_raw(rest_url(self::REST_NAMESPACE . '/')),
             'nonce' => wp_create_nonce('wp_rest'),
@@ -306,10 +272,44 @@ final class ARK_App_Designer {
     }
 
     public function maybe_upgrade_schema() {
-        if (absint(get_option('ark_app_designer_live_slider_schema', 0)) >= 1) return;
-        self::create_live_slider_tables();
-        $this->migrate_legacy_banner_sliders();
-        update_option('ark_app_designer_live_slider_schema', 1, false);
+        if (absint(get_option('ark_app_designer_live_slider_schema', 0)) < 1) {
+            self::create_live_slider_tables();
+            $this->migrate_legacy_banner_sliders();
+            update_option('ark_app_designer_live_slider_schema', 1, false);
+        }
+
+        // Upgrade existing Draft and Published documents without resetting any
+        // user-created sections, ordering, images, links or styling.
+        $config_schema = absint(get_option('ark_app_designer_config_schema', 0));
+        if ($config_schema < 3) {
+            $defaults = self::default_config();
+            foreach ([self::PUBLISHED, self::DRAFT] as $option_name) {
+                $stored = get_option($option_name, null);
+                if (!is_array($stored)) continue;
+                $merged = self::merge_config_defaults($defaults, $stored);
+                $merged['schema_version'] = 3;
+                if ($merged !== $stored) update_option($option_name, $merged, false);
+            }
+            update_option('ark_app_designer_config_schema', 3, false);
+        }
+    }
+
+    /** Recursively fill missing associative config keys; preserve all saved lists. */
+    private static function merge_config_defaults($defaults, $saved) {
+        if (!is_array($defaults) || !is_array($saved)) return $saved;
+        $is_list = function($value) {
+            if (!$value) return true;
+            return array_keys($value) === range(0, count($value) - 1);
+        };
+        if ($is_list($defaults) || ($saved && $is_list($saved))) return $saved;
+        foreach ($defaults as $key => $value) {
+            if (!array_key_exists($key, $saved)) {
+                $saved[$key] = $value;
+            } elseif (is_array($value) && is_array($saved[$key])) {
+                $saved[$key] = self::merge_config_defaults($value, $saved[$key]);
+            }
+        }
+        return $saved;
     }
 
     private function live_slider_defaults() {
@@ -630,13 +630,12 @@ final class ARK_App_Designer {
     }
 
     public function api_config() {
-        $config = $this->merge_config_defaults(get_option(self::PUBLISHED, self::default_config()));
-        return rest_ensure_response($config);
+        $config = get_option(self::PUBLISHED, self::default_config());
+        return rest_ensure_response(self::merge_config_defaults(self::default_config(), is_array($config) ? $config : self::default_config()));
     }
 
     public function api_studio_config() {
-        $config = $this->merge_config_defaults(get_option(self::DRAFT, get_option(self::PUBLISHED, self::default_config())));
-        return rest_ensure_response($config);
+        return rest_ensure_response($this->current_editor_config());
     }
 
     /** Return real native page and WooCommerce product destinations for slider links. */
@@ -663,6 +662,7 @@ final class ARK_App_Designer {
                 }
             }
         }
+        $pages = $this->current_editor_config()['pages'] ?? [];
         return rest_ensure_response([
             'pages' => [
                 ['value' => 'page:home', 'label' => 'Home page'],
@@ -672,6 +672,11 @@ final class ARK_App_Designer {
                 ['value' => 'page:wishlist', 'label' => 'Wishlist page'],
                 ['value' => 'page:cart', 'label' => 'Cart page'],
             ],
+            'custom_pages' => array_values(array_map(function($key) use ($pages) {
+                return ['value' => 'page:' . $key, 'label' => (string) ($pages[$key]['title'] ?? $key)];
+            }, array_filter(array_keys($pages), function($key) use ($pages) {
+                return strpos((string) $key, 'custom_') === 0 && is_array($pages[$key]);
+            }))),
             'products' => $products,
             'categories' => $categories,
         ]);
@@ -701,22 +706,69 @@ final class ARK_App_Designer {
         return $clean;
     }
 
-    private function sanitize_config($raw) {
+    private function sanitize_heading_settings($raw, $defaults, $allowed_pages = []) {
+        $value = is_array($raw) ? self::merge_config_defaults($defaults, $raw) : $defaults;
+        foreach (['background_color','title_color','icon_color','button_background','button_text_color'] as $key) {
+            $value[$key] = sanitize_hex_color($value[$key] ?? '') ?: ($defaults[$key] ?? '#FFFFFF');
+        }
+        $image_id = absint($value['background_image_id'] ?? 0);
+        $image_url = $image_id > 0 && function_exists('wp_get_attachment_url') ? wp_get_attachment_url($image_id) : '';
+        $value['background_image_id'] = $image_id;
+        $value['background_image_url'] = $this->clean_url($image_url ?: ($value['background_image_url'] ?? ''));
+        $value['show_background_image'] = !empty($value['show_background_image']) && $value['background_image_url'] !== '';
+        $value['background_image_fit'] = in_array(($value['background_image_fit'] ?? 'cover'), ['cover','contain','fill'], true) ? $value['background_image_fit'] : 'cover';
+        $value['animation'] = in_array(($value['animation'] ?? 'none'), ['none','pulse','gradient','slide','shimmer','float'], true) ? $value['animation'] : 'none';
+        $value['background_effect'] = in_array(($value['background_effect'] ?? 'none'), ['none','glass','blur','shimmer','glow','gradient'], true) ? $value['background_effect'] : 'none';
+        $value['height'] = min(100, max(48, absint($value['height'] ?? 64)));
+        $value['position_index'] = min(50, max(-1, (int) ($value['position_index'] ?? -1)));
+        $value['visible_pages'] = array_values(array_intersect($allowed_pages, array_map('sanitize_key', (array) ($value['visible_pages'] ?? $defaults['visible_pages'] ?? []))));
+        $value['title'] = sanitize_text_field($value['title'] ?? '');
+        $value['icon_name'] = sanitize_key($value['icon_name'] ?? 'storefront');
+        $value['button_label'] = sanitize_text_field($value['button_label'] ?? 'Explore');
+        $value['button_icon'] = sanitize_key($value['button_icon'] ?? 'arrow_forward');
+        $mode = in_array(($value['button_link_type'] ?? 'in_app'), ['in_app','deeplink','chrome'], true) ? ($value['button_link_type'] ?? 'in_app') : 'in_app';
+        $value['button_link_type'] = $mode;
+        $target = (string) ($value['button_url'] ?? '');
+        $value['button_url'] = $mode === 'chrome' ? $this->clean_url($target) : sanitize_text_field($target);
+        foreach (['enabled','show_app_logo','show_app_name','show_icon','show_title','show_button'] as $key) {
+            $value[$key] = !array_key_exists($key, $value) || (bool) $value[$key];
+        }
+        return $value;
+    }
+
+    private function current_editor_config() {
+        $published = get_option(self::PUBLISHED, self::default_config());
+        $draft = get_option(self::DRAFT, []);
+        if (!is_array($published)) $published = self::default_config();
+        if (!is_array($draft)) $draft = [];
+        $published_at = strtotime((string) ($published['updated_at'] ?? '')) ?: 0;
+        $draft_at = strtotime((string) ($draft['updated_at'] ?? '')) ?: 0;
+        $source = $draft_at >= $published_at && !empty($draft) ? $draft : $published;
+        return self::merge_config_defaults(self::default_config(), $source);
+    }
+
+    private function sanitize_config($raw, $baseline = null) {
         if (!is_array($raw)) return new WP_Error('ark_designer_invalid', 'Design configuration must be an object.', ['status' => 400]);
         $base = self::default_config();
+        if (!is_array($baseline)) $baseline = $this->current_editor_config();
+        // A cached/older Designer tab must not erase settings that were added by
+        // a newer plugin. Fill only missing values from the last saved document.
+        $raw = self::merge_config_defaults(is_array($baseline) ? $baseline : $base, $raw);
         $clean = $this->clean_value($raw);
         if (!is_array($clean)) return new WP_Error('ark_designer_invalid', 'Invalid design configuration.', ['status' => 400]);
-        // Merge schema defaults before sanitizing. This prevents older drafts from
-        // erasing newer controls (notably the Default Heading Bar) when another page is saved.
-        $clean = $this->merge_config_defaults($clean);
+        $clean = self::merge_config_defaults($base, $clean);
 
-        $clean['schema_version'] = 1;
+        $clean['schema_version'] = 3;
         $clean['version'] = max(1, absint($raw['version'] ?? 1));
         $clean['updated_at'] = gmdate('c');
 
         $app = is_array($clean['app'] ?? null) ? $clean['app'] : $base['app'];
         $icon_visibility = is_array($app['icon_visibility'] ?? null) ? $app['icon_visibility'] : [];
-        $visibility_pages = ['home','search','categories','product','wishlist','account'];
+        $page_keys_for_visibility = array_keys(is_array($clean['pages'] ?? null) ? $clean['pages'] : []);
+        $custom_visibility_pages = array_values(array_filter($page_keys_for_visibility, function($key) {
+            return preg_match('/^custom_[a-z0-9_]{1,40}$/', (string) $key) === 1;
+        }));
+        $visibility_pages = array_values(array_unique(array_merge(['home','search','categories','product','wishlist','account'], $custom_visibility_pages)));
         $visibility_icons = ['app_icon','app_name','page_title','refresh','notifications','cart','wishlist','share','add_to_cart','buy_now'];
         foreach ($visibility_pages as $visibility_page) {
             $page_visibility = is_array($icon_visibility[$visibility_page] ?? null) ? $icon_visibility[$visibility_page] : [];
@@ -743,6 +795,10 @@ final class ARK_App_Designer {
         $theme['font_scale'] = min(1.3, max(0.85, (float) ($theme['font_scale'] ?? 1)));
         $clean['theme'] = $theme;
 
+        $allowed_page_keys = array_values(array_unique(array_merge(['home','search','categories','product','account','wishlist'], $custom_visibility_pages)));
+        $heading = $this->sanitize_heading_settings($clean['default_heading'] ?? $base['default_heading'], $base['default_heading'], $allowed_page_keys);
+        $clean['default_heading'] = $heading;
+
         $splash = is_array($clean['splash'] ?? null) ? $clean['splash'] : [];
         $splash['enabled'] = !empty($splash['enabled']);
         $splash['image_url'] = $this->clean_url($splash['image_url'] ?? '');
@@ -751,13 +807,13 @@ final class ARK_App_Designer {
         $splash['background'] = sanitize_hex_color($splash['background'] ?? '') ?: $base['splash']['background']; 
         unset($splash['logo_url'], $splash['title'], $splash['subtitle'], $splash['animation']);
         $clean['splash'] = $splash;
-        $loading = is_array($clean['loading'] ?? null) ? $clean['loading'] : $base['loading'];
+        $loading = is_array($clean['loading'] ?? null) ? self::merge_config_defaults($base['loading'], $clean['loading']) : $base['loading'];
         $loading['enabled'] = !empty($loading['enabled']);
-        $loading['animation_url'] = $this->clean_url($loading['animation_url'] ?? '') ?: $base['loading']['animation_url'];
+        $loading['animation_url'] = $this->clean_url($loading['animation_url'] ?? '');
         $loading['duration_ms'] = min(5000, max(250, absint($loading['duration_ms'] ?? 900)));
-        $allowed_loading_pages = ['home','categories','product','account'];
-        $loading_pages = is_array($loading['pages'] ?? null) ? $loading['pages'] : $allowed_loading_pages;
-        $loading['pages'] = array_values(array_intersect($allowed_loading_pages, array_map('sanitize_key', $loading_pages)));
+        $loading['size'] = min(140, max(24, absint($loading['size'] ?? 58)));
+        $loading_pages = is_array($loading['pages'] ?? null) ? $loading['pages'] : $base['loading']['pages'];
+        $loading['pages'] = array_values(array_intersect($allowed_page_keys, array_map('sanitize_key', $loading_pages)));
         $clean['loading'] = $loading;
 
         $celebration = is_array($clean['celebration'] ?? null) ? $clean['celebration'] : $base['celebration'];
@@ -768,8 +824,28 @@ final class ARK_App_Designer {
 
         $pages = is_array($clean['pages'] ?? null) ? $clean['pages'] : [];
         $allowed_pages = ['home','search','categories','product','account','wishlist'];
+        foreach (array_keys($pages) as $candidate_key) {
+            if (preg_match('/^custom_[a-z0-9_]{1,40}$/', (string) $candidate_key) === 1 && is_array($pages[$candidate_key])) {
+                $allowed_pages[] = $candidate_key;
+            }
+        }
+        $allowed_pages = array_values(array_unique($allowed_pages));
         foreach ($allowed_pages as $page_key) {
-            $page = is_array($pages[$page_key] ?? null) ? $pages[$page_key] : $base['pages'][$page_key];
+            $page_defaults = $base['pages'][$page_key] ?? [
+                'title' => 'New Page', 'custom_page' => true, 'sections' => [],
+                'heading_settings' => $base['default_heading'],
+            ];
+            $page = is_array($pages[$page_key] ?? null)
+                ? self::merge_config_defaults($page_defaults, $pages[$page_key])
+                : $page_defaults;
+            if (strpos($page_key, 'custom_') === 0) {
+                $page['custom_page'] = true;
+                $page['heading_settings'] = $this->sanitize_heading_settings(
+                    $page['heading_settings'] ?? $base['default_heading'],
+                    $base['default_heading'],
+                    $allowed_page_keys
+                );
+            }
             if ($page_key === 'search') {
                 $search_settings = is_array($page['search_settings'] ?? null) ? $page['search_settings'] : ($base['pages']['search']['search_settings'] ?? []);
                 $search_settings['placeholder'] = sanitize_text_field($search_settings['placeholder'] ?? 'Search products...');
@@ -796,7 +872,7 @@ final class ARK_App_Designer {
                 $item['visible'] = !array_key_exists('visible', $section) || (bool) $section['visible'];
                 if (isset($section['image_url'])) $item['image_url'] = $this->clean_url($section['image_url']);
                 if (isset($section['background_image_url'])) $item['background_image_url'] = $this->clean_url($section['background_image_url']);
-                if (isset($section['visible_pages']) && is_array($section['visible_pages'])) $item['visible_pages'] = array_values(array_intersect(['home','search','categories','product','account','wishlist'], array_map('sanitize_key', $section['visible_pages'])));
+                if (isset($section['visible_pages']) && is_array($section['visible_pages'])) $item['visible_pages'] = array_values(array_intersect($allowed_page_keys, array_map('sanitize_key', $section['visible_pages'])));
                 $item['show_icon'] = !array_key_exists('show_icon', $section) || (bool) $section['show_icon'];
                 $item['show_title'] = !array_key_exists('show_title', $section) || (bool) $section['show_title'];
                 $item['heading_animation'] = in_array(($section['heading_animation'] ?? 'none'), ['none','fade','slide','pulse','gradient'], true) ? ($section['heading_animation'] ?? 'none') : 'none';
@@ -978,6 +1054,7 @@ final class ARK_App_Designer {
             'show_notifications' => !array_key_exists('show_notifications', $app) || (bool) $app['show_notifications'],
             'show_cart' => !array_key_exists('show_cart', $app) || (bool) $app['show_cart'],
             'header_icon_animation' => in_array(($app['header_icon_animation'] ?? 'none'), ['none','pulse','rotate','bounce'], true) ? ($app['header_icon_animation'] ?? 'none') : 'none',
+            'icon_visibility' => is_array($app['icon_visibility'] ?? null) ? $app['icon_visibility'] : [],
             'splash_image_url' => $splash_image_url,
             'splash_enabled' => $splash_enabled,
             'splash_duration_ms' => $splash_duration,
@@ -994,14 +1071,16 @@ final class ARK_App_Designer {
     }
 
     public function api_save_draft($request) {
-        $clean = $this->sanitize_config($request->get_json_params());
+        $baseline = $this->current_editor_config();
+        $clean = $this->sanitize_config($request->get_json_params(), is_array($baseline) ? $baseline : $this->current_editor_config());
         if (is_wp_error($clean)) return $clean;
         update_option(self::DRAFT, $clean, false);
         return rest_ensure_response(['success' => true, 'version' => $clean['version']]);
     }
 
     public function api_publish($request) {
-        $clean = $this->sanitize_config($request->get_json_params());
+        $baseline = $this->current_editor_config();
+        $clean = $this->sanitize_config($request->get_json_params(), is_array($baseline) ? $baseline : $this->current_editor_config());
         if (is_wp_error($clean)) return $clean;
         $current = get_option(self::PUBLISHED, self::default_config());
         $clean['version'] = max(1, absint($current['version'] ?? 0) + 1);
@@ -1181,7 +1260,7 @@ final class ARK_App_Designer {
         echo '<div class="wrap ark-designer-wrap"><div class="ark-designer-app">';
         echo '<header class="ark-topbar"><div class="ark-brand"><span class="ark-brand-mark">A</span><div><strong>ARK App Designer</strong><small>Visual studio for GlowHit</small></div></div>';
         echo '<div class="ark-top-actions"><span class="ark-status"><i></i> Connected to WordPress</span><button class="ark-btn ark-btn-ghost" id="ark-save-draft">Save draft</button><button class="ark-btn ark-btn-publish" id="ark-publish">Publish changes ↗</button></div></header>';
-        echo '<main class="ark-workspace"><aside class="ark-sidebar"><button type="button" class="ark-panel-toggle" id="ark-toggle-left" aria-label="Collapse components panel">☰ Components</button><div class="ark-sidebar-title">BUILD YOUR APP</div><div class="ark-page-list" id="ark-pages"></div><div class="ark-sidebar-divider"></div><button type="button" class="ark-quick-link" data-view="default_heading">▤ Default heading bar</button><div class="ark-sidebar-divider"></div><div class="ark-sidebar-title">ADD COMPONENT</div><div class="ark-component-list" id="ark-components"></div><div class="ark-sidebar-divider"></div><button class="ark-quick-link" data-view="app">✎ App name & identity</button><button class="ark-quick-link" data-view="theme">◈ Theme & colours</button><button class="ark-quick-link" data-view="celebration">✧ Crackers animation</button><button class="ark-quick-link" data-view="navigation">☷ Navigation</button><button class="ark-quick-link" data-view="icon_visibility">◉ Icon visibility</button><button class="ark-quick-link" data-view="source">⌘ App source files</button></aside>';
+        echo '<main class="ark-workspace"><aside class="ark-sidebar"><button type="button" class="ark-panel-toggle" id="ark-toggle-left" aria-label="Collapse components panel">☰ Components</button><div class="ark-sidebar-title">BUILD YOUR APP</div><div class="ark-page-list" id="ark-pages"></div><div class="ark-sidebar-divider"></div><button type="button" class="ark-quick-link" data-view="default_heading">▤ Default heading bar</button><button type="button" class="ark-quick-link" id="ark-add-page">＋ Add New Page</button><button type="button" class="ark-quick-link" id="ark-page-settings" data-view="page_settings" style="display:none">⚙ Page Settings</button><div class="ark-sidebar-divider"></div><div class="ark-sidebar-title">ADD COMPONENT</div><div class="ark-component-list" id="ark-components"></div><div class="ark-sidebar-divider"></div><button class="ark-quick-link" data-view="app">✎ App name & identity</button><button class="ark-quick-link" data-view="theme">◈ Theme & colours</button><button class="ark-quick-link" data-view="celebration">✧ Crackers animation</button><button class="ark-quick-link" data-view="loading">◌ Loading animation</button><button class="ark-quick-link" data-view="navigation">☷ Navigation</button><button class="ark-quick-link" data-view="icon_visibility">◉ Icon visibility</button><button class="ark-quick-link" data-view="source">⌘ App source files</button></aside>';
         echo '<section class="ark-canvas-area"><div class="ark-canvas-toolbar"><div><strong id="ark-canvas-title">Home page</strong><span id="ark-canvas-subtitle">Drag sections or use the arrows to change order</span></div><div class="ark-canvas-tools"><span class="ark-live-pill">● LIVE PREVIEW</span><button class="ark-icon-btn" id="ark-preview-refresh" title="Refresh preview">↻</button></div></div>';
         echo '<div class="ark-canvas-scroll"><div class="ark-phone"><div class="ark-phone-status"><span>9:41</span><span>● ● ▰</span></div><div class="ark-phone-screen" id="ark-preview"></div><div class="ark-phone-nav"><span>⌂</span><span>▦</span><span>♡</span><span>♙</span></div></div></div></section>';
         echo '<aside class="ark-inspector"><div class="ark-inspector-head"><button type="button" class="ark-panel-toggle" id="ark-toggle-right" aria-label="Collapse properties panel">⚙ Properties</button><span>PROPERTIES</span><strong id="ark-inspector-title">Select a section</strong></div><div id="ark-inspector-content" class="ark-inspector-content"><div class="ark-empty-inspector">Choose a component from the canvas to edit its settings.</div></div></aside></main>';
