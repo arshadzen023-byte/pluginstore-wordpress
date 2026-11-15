@@ -637,7 +637,7 @@ jQuery(function($){
       const panel=$('<div class="ark-icon-visibility"></div>');
       pages.forEach(pageKey=>{
         const group=$('<div class="ark-icon-page"></div>');
-        $('<b></b>').text(pageKey.charAt(0).toUpperCase()+pageKey.slice(1)+' page').appendTo(group);
+        $('<b></b>').text(pageLabel(pageKey)+' page').appendTo(group);
         (iconsByPage[pageKey]||['cart']).forEach(iconKey=>{
           if(!map[pageKey])map[pageKey]={};
           const label=$('<label></label>');
@@ -669,8 +669,9 @@ jQuery(function($){
       $inspector.append(field('Show background image','show_background_image',h.show_background_image===true,'checkbox'));
       $inspector.append(field('Background image / GIF','background_image_url',h.background_image_url||'','url','Choose from Media Library. Attachment ID and URL are saved for reliable restore after refresh.'));
       $inspector.append(choiceField('Background image fit','background_image_fit',h.background_image_fit||'cover',[['cover','Cover'],['contain','Contain'],['fill','Stretch']]));
+      $inspector.append(field('Background image opacity (%)','background_image_opacity',h.background_image_opacity??100,'number','0 hides the image; 100 shows it fully.'));
       $inspector.append(choiceField('Background effect','background_effect',h.background_effect||'none',[
-        ['none','None'],['glass','Glass'],['blur','Blur'],['shimmer','Shimmer'],['glow','Glow'],['gradient','Gradient']
+        ['none','None'],['glass','Glass'],['blur','Blur'],['shimmer','Shimmer'],['glow','Glow'],['gradient','Gradient'],['fireworks','Fireworks / Crackers']
       ]));
       $inspector.append(field('Heading height (px)','height',h.height||64,'number'));
       $inspector.append(field('Heading position (component order)','position_index',Number(h.position_index??-1),'number','-1 keeps it as the fixed app bar. 0–50 moves it into the scrollable page between components.'));
@@ -684,6 +685,15 @@ jQuery(function($){
       else $inspector.append(field('Button URL / deep link','button_url',h.button_url||'',mode==='chrome'?'url':'text'));
       $inspector.append(field('Button background colour','button_background',h.button_background||'#2874F0','color'));
       $inspector.append(field('Button text colour','button_text_color',h.button_text_color||'#FFFFFF','color'));
+      $inspector.append(field('Show mini action button','show_mini_button',h.show_mini_button===true,'checkbox'));
+      $inspector.append(field('Mini button title','mini_button_label',h.mini_button_label||'More'));
+      $inspector.append(field('Mini button Material Icon','mini_button_icon',h.mini_button_icon||'chevron_right','text','Examples: chevron_right, help, support_agent, info, phone.'));
+      const miniMode=h.mini_button_link_type||'in_app';
+      $inspector.append(choiceField('Mini button link type','mini_button_link_type',miniMode,[['in_app','In-app page / product'],['chrome','Website'],['deeplink','App deep link']]));
+      if(miniMode==='in_app')$inspector.append(inAppTargetField('Mini button destination',h.mini_button_url||'',value=>{h.mini_button_url=value;markDirty();renderPreview();},'Choose a native page, custom page or WooCommerce product.'));
+      else $inspector.append(field('Mini button URL / deep link','mini_button_url',h.mini_button_url||'',miniMode==='chrome'?'url':'text'));
+      $inspector.append(field('Mini button background','mini_button_background',h.mini_button_background||'#FFFFFF','color'));
+      $inspector.append(field('Mini button text colour','mini_button_text_color',h.mini_button_text_color||'#2874F0','color'));
       const pageWrap=$('<div class="ark-field"><label>Visible on pages</label></div>');
       const pageList=$('<div class="ark-icon-visibility"></div>');
       allPageKeys().forEach(key=>{
@@ -884,7 +894,7 @@ jQuery(function($){
     ]));
     $inspector.append(field('Background colour','section_background',s.section_background||'#FFFFFF','color'));
     $inspector.append(choiceField('Background animation','background_motion',s.background_motion||'none',[
-      ['none','Static'],['pulse','Soft pulse'],['gradient','Moving gradient'],['shimmer','Shimmer'],['glow','Glow']
+      ['none','Static'],['pulse','Soft pulse'],['gradient','Moving gradient'],['shimmer','Shimmer'],['glow','Glow'],['fireworks','Fireworks / Crackers']
     ]));
     const tapMode=$('<div class="ark-field"><label>Tap action type</label><select><option value="in_app">In-app page / product</option><option value="deeplink">App deep link</option><option value="chrome">Open website</option></select></div>');
     tapMode.find('select').val(s.tap_link_type||'in_app').on('change',function(){
