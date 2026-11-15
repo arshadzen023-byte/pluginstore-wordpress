@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Designer
  * Description: Server-driven visual app designer for ARK Native / GlowHit Flutter apps, including live layout, navigation, theme and in-app splash configuration.
- * Version: 1.15.0
+ * Version: 1.16.0
  * Author: ARK
  * Requires PHP: 7.4
  */
@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class ARK_App_Designer {
-    const VERSION = '1.15.0';
+    const VERSION = '1.16.0';
     const PUBLISHED = 'ark_app_designer_published';
     const DRAFT = 'ark_app_designer_draft';
     const REVISIONS = 'ark_app_designer_revisions';
@@ -50,8 +50,9 @@ final class ARK_App_Designer {
                 'show_title' => true, 'title' => '', 'show_button' => false, 'button_label' => 'Explore',
                 'button_icon' => 'arrow_forward', 'button_link_type' => 'in_app', 'button_url' => 'page:categories',
                 'background_color' => '#FFFFFF', 'background_image_url' => '', 'show_background_image' => false,
-                'background_image_fit' => 'cover', 'title_color' => '#202733', 'icon_color' => '#202733',
+                'background_image_fit' => 'cover', 'background_image_opacity' => 100, 'title_color' => '#202733', 'icon_color' => '#202733',
                 'button_background' => '#2874F0', 'button_text_color' => '#FFFFFF', 'height' => 64, 'animation' => 'none', 'background_effect' => 'none', 'background_image_id' => 0, 'position_index' => -1,
+                'show_mini_button' => false, 'mini_button_label' => 'More', 'mini_button_icon' => 'chevron_right', 'mini_button_link_type' => 'in_app', 'mini_button_url' => '', 'mini_button_background' => '#FFFFFF', 'mini_button_text_color' => '#2874F0',
             ],
             
             'theme' => [
@@ -717,8 +718,9 @@ final class ARK_App_Designer {
         $value['background_image_url'] = $this->clean_url($image_url ?: ($value['background_image_url'] ?? ''));
         $value['show_background_image'] = !empty($value['show_background_image']) && $value['background_image_url'] !== '';
         $value['background_image_fit'] = in_array(($value['background_image_fit'] ?? 'cover'), ['cover','contain','fill'], true) ? $value['background_image_fit'] : 'cover';
+        $value['background_image_opacity'] = min(100, max(0, absint($value['background_image_opacity'] ?? 100)));
         $value['animation'] = in_array(($value['animation'] ?? 'none'), ['none','pulse','gradient','slide','shimmer','float'], true) ? $value['animation'] : 'none';
-        $value['background_effect'] = in_array(($value['background_effect'] ?? 'none'), ['none','glass','blur','shimmer','glow','gradient'], true) ? $value['background_effect'] : 'none';
+        $value['background_effect'] = in_array(($value['background_effect'] ?? 'none'), ['none','glass','blur','shimmer','glow','gradient','fireworks'], true) ? $value['background_effect'] : 'none';
         $value['height'] = min(100, max(48, absint($value['height'] ?? 64)));
         $value['position_index'] = min(50, max(-1, (int) ($value['position_index'] ?? -1)));
         $value['visible_pages'] = array_values(array_intersect($allowed_pages, array_map('sanitize_key', (array) ($value['visible_pages'] ?? $defaults['visible_pages'] ?? []))));
@@ -726,6 +728,15 @@ final class ARK_App_Designer {
         $value['icon_name'] = sanitize_key($value['icon_name'] ?? 'storefront');
         $value['button_label'] = sanitize_text_field($value['button_label'] ?? 'Explore');
         $value['button_icon'] = sanitize_key($value['button_icon'] ?? 'arrow_forward');
+        $value['show_mini_button'] = !empty($value['show_mini_button']);
+        $value['mini_button_label'] = sanitize_text_field($value['mini_button_label'] ?? 'More');
+        $value['mini_button_icon'] = sanitize_key($value['mini_button_icon'] ?? 'chevron_right');
+        $mini_mode = in_array(($value['mini_button_link_type'] ?? 'in_app'), ['in_app','deeplink','chrome'], true) ? ($value['mini_button_link_type'] ?? 'in_app') : 'in_app';
+        $value['mini_button_link_type'] = $mini_mode;
+        $mini_target = (string) ($value['mini_button_url'] ?? '');
+        $value['mini_button_url'] = $mini_mode === 'chrome' ? $this->clean_url($mini_target) : sanitize_text_field($mini_target);
+        $value['mini_button_background'] = sanitize_hex_color($value['mini_button_background'] ?? '') ?: '#FFFFFF';
+        $value['mini_button_text_color'] = sanitize_hex_color($value['mini_button_text_color'] ?? '') ?: '#2874F0';
         $mode = in_array(($value['button_link_type'] ?? 'in_app'), ['in_app','deeplink','chrome'], true) ? ($value['button_link_type'] ?? 'in_app') : 'in_app';
         $value['button_link_type'] = $mode;
         $target = (string) ($value['button_url'] ?? '');
@@ -924,7 +935,7 @@ final class ARK_App_Designer {
                     ? ($section['entrance_animation'] ?? 'none') : 'none';
                 $item['card_animation'] = in_array(($section['card_animation'] ?? 'none'), ['none','tilt_3d','glow'], true)
                     ? ($section['card_animation'] ?? 'none') : 'none';
-                $item['background_motion'] = in_array(($section['background_motion'] ?? 'none'), ['none','pulse','gradient','shimmer','glow'], true) ? ($section['background_motion'] ?? 'none') : 'none';
+                $item['background_motion'] = in_array(($section['background_motion'] ?? 'none'), ['none','pulse','gradient','shimmer','glow','fireworks'], true) ? ($section['background_motion'] ?? 'none') : 'none';
                 if (isset($section['card_design'])) {
                     $item['card_design'] = in_array($section['card_design'], ['flipkart','classic','elevated','glass','compact','minimal','3d','3d_glass'], true)
                         ? $section['card_design'] : 'flipkart';
