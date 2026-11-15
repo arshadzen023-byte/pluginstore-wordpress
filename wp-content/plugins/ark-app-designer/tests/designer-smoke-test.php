@@ -1,6 +1,6 @@
 <?php
 /**
- * Source regression checks for ARK App Designer 1.10.0.
+ * Source regression checks for ARK App Designer 1.14.0.
  * Run: php tests/designer-smoke-test.php
  */
 $root = dirname(__DIR__);
@@ -48,6 +48,21 @@ $checks = [
     'card animation is persisted rather than discarded' => strpos($source, "'card_animation']") !== false && strpos($source, 'unset($item[\'card_animation\'])') === false,
     'card depth, radius and image ratio are persisted' => strpos($source, "'card_depth'") !== false && strpos($source, "'card_radius'") !== false && strpos($source, "'card_aspect_ratio'") !== false,
     'Designer exposes 3D card controls' => strpos($js, 'Interactive 3D tilt') !== false && strpos($js, '3D glass card') !== false,
+    'Config migration fills missing defaults without replacing saved arrays' => strpos($source, 'merge_config_defaults') !== false && strpos($source, 'ark_app_designer_config_schema') !== false,
+    'Admin assets use file modification cache-busters' => strpos($source, 'filemtime($js_path)') !== false && strpos($source, 'filemtime($css_path)') !== false,
+    'Default Heading Bar has native animation controls' => strpos($js, "Heading bar animation") !== false && strpos($source, "'animation' => 'none'") !== false,
+    'Default Heading animation and background effects are validated and persisted' => strpos($source, "['none','pulse','gradient','slide','shimmer','float']") !== false && strpos($source, "['none','glass','blur','shimmer','glow','gradient']") !== false,
+    'Per-page icon visibility survives publish sanitization' => strpos($source, "'icon_visibility' => is_array") !== false,
+    'Media Library background image attachment IDs are persisted and restored' => strpos($source, 'background_image_id') !== false && strpos($source, 'wp_get_attachment_url($image_id)') !== false,
+    'Draft editor selects the newest saved Draft or Published config' => strpos($source, 'current_editor_config()') !== false && strpos($source, '$draft_at >= $published_at') !== false,
+    'Stale editor requests preserve missing fields from the latest configuration' => strpos($source, '$raw = self::merge_config_defaults(is_array($baseline) ? $baseline : $base, $raw)') !== false,
+    'Custom pages survive config sanitization and are returned in link targets' => strpos($source, "preg_match('/^custom_[a-z0-9_]{1,40}$/") !== false && strpos($source, "'custom_pages' =>") !== false,
+    'Loading animation supports size, page visibility and bundled asset fallback' => strpos($source, "'size' => 58") !== false && strpos($source, '$loading[\'size\']') !== false,
+    'Designer has Add New Page and Page Settings menu items' => strpos($source, 'id="ark-add-page"') !== false && strpos($source, 'id="ark-page-settings"') !== false,
+    'Loading animation controls are available in Designer' => strpos($source, 'data-view="loading"') !== false && strpos($js, "state.view==='loading'") !== false,
+    'Heading preview is draggable and persists its placement' => strpos($js, "data-id','__default_heading__'") !== false && strpos($js, 'heading.position_index=') !== false,
+    'Custom page modal and page link picker are available' => strpos($js, 'function openAddPageDialog') !== false && strpos($js, 'Custom pages') !== false,
+
 ];
 $failed = [];
 foreach ($checks as $label => $passed) {
