@@ -7,6 +7,8 @@ $root = dirname(__DIR__);
 $source = file_get_contents($root . '/ark-app-designer.php');
 $js = file_get_contents($root . '/assets/admin.js');
 $css = file_get_contents($root . '/assets/admin.css');
+$flutter = file_get_contents($root . '/../../flutter-app/lib/features/designer/dynamic_page_renderer.dart');
+$home = file_get_contents($root . '/../../flutter-app/lib/features/home/home_screen.dart');
 
 if (!preg_match('/^\\s*\\* Version:\\s*([0-9.]+)/m', $source, $match)) {
     fwrite(STDERR, "Could not read Designer version." . PHP_EOL);
@@ -53,7 +55,7 @@ $checks = [
     'Category grid supports slider and alternate card layouts' => strpos($js, 'Horizontal slider') !== false && strpos($source, "'category_layout'") !== false && strpos($source, "'category_card_style'") !== false,
     'Layout Designer bottom dock exposes live editing tabs' => strpos($source, 'id="ark-layout-dock"') !== false && strpos($js, 'layoutDockShowPanel') !== false && strpos($css, '.ark-layout-dock') !== false,
     'Layout Designer component panel exposes banner category and product variants' => strpos($js, 'Banner Grid') !== false && strpos($js, 'Category List Tile') !== false && strpos($js, 'Product Scroll') !== false,
-    'Layout Designer shared spacing and dimension properties are available' => strpos($js, 'Padding top (px)') !== false && strpos($js, 'Margin left (px)') !== false && strpos($js, 'Fixed height (px, 0 = auto)') !== false,
+    'Layout Designer shared spacing and dimension properties are available' => strpos($js, "'3. PADDING'") !== false && strpos($js, "'4. MARGIN'") !== false && strpos($js, "'2. DIMENSIONS'") !== false && strpos($js, "'Top (px)','padding_top'") !== false && strpos($js, "'Left (px)','margin_left'") !== false && strpos($js, 'Fixed height (px, 0 = auto)') !== false,
     'Layout templates can be saved and inserted' => strpos($js, 'arkDesignerMyTemplatesV1') !== false && strpos($js, 'Save selected component') !== false && strpos($js, 'Template inserted') !== false,
     'Banner category and product component aliases normalize to native renderer types' => strpos($source, "'banner_grid' => ['ark_live_slider','grid']") !== false && strpos($source, "'category_list_tile' => ['category_grid','list_tile']") !== false && strpos($source, "'product_list' => ['product_grid','list']") !== false,
     'Designer component alias is restored while native layout variant is preserved' => strpos($source, "'designer_component_type'") !== false && strpos($js, 'designer_component_type') !== false,
@@ -73,6 +75,16 @@ $checks = [
     'Loading animation controls are available in Designer' => strpos($source, 'data-view="loading"') !== false && strpos($js, "state.view==='loading'") !== false,
     'Heading preview is draggable and persists its placement' => strpos($js, "data-id','__default_heading__'") !== false && strpos($js, 'heading.position_index=') !== false,
     'Custom page modal and page link picker are available' => strpos($js, 'function openAddPageDialog') !== false && strpos($js, 'Custom pages') !== false,
+    'Custom page links survive SQL link normalization' => strpos($source, 'custom_[a-z0-9_]{1,40}') !== false,
+    'Website URLs without a scheme are normalized to HTTPS' => strpos($source, "'https://' . \$value") !== false,
+    'Destination lookup supports fast server-side product search' => strpos($source, "'limit' => 50") !== false && strpos($source, 'get_param') !== false,
+    'Destination picker provides searchable products and categories' => strpos($js, 'Search products or categories') !== false && strpos($js, 'studio/targets?search=') !== false,
+    'Numeric layout properties have linked range sliders' => strpos($js, "type==='number'") !== false && strpos($js, 'ark-field-range') !== false,
+    'Layout properties are grouped by colour dimensions padding margin settings and style' => strpos($js, '1. COLOUR & TITLE') !== false && strpos($js, '2. DIMENSIONS') !== false && strpos($js, '3. PADDING') !== false && strpos($js, '4. MARGIN') !== false && strpos($js, '5. SETTINGS') !== false && strpos($js, '6. STYLE & ANIMATION') !== false,
+    'Designer property groups and range sliders have responsive styling' => strpos($css, '.ark-property-section') !== false && strpos($css, '.ark-field-range') !== false,
+    'Product destination opens ProductScreen when no parent callback is supplied' => strpos($flutter, 'widget.onProductTap != null') !== false && strpos($flutter, 'ProductScreen(id: id)') !== false,
+    'Custom pages use configured app background and an empty-page fallback' => strpos($flutter, 'backgroundColor: pageBackground') !== false && strpos($flutter, 'This page is ready. Add components in ARK App Designer.') !== false,
+    'Home website and deep links are normalized before opening' => strpos($home, 'https://') !== false && strpos($home, 'LaunchMode.externalApplication') !== false,
 
 ];
 $failed = [];
