@@ -1265,8 +1265,10 @@ jQuery(function($){
 
       const style=addGroup('6. STYLE & ANIMATION');
       style.append(choiceField('Entrance animation','entrance_animation',s.entrance_animation||'none',[
-        ['none','None'],['fade','Fade in'],['slide','Slide in'],['zoom','Zoom in']
+        ['none','None'],['fade','Fade in'],['slide','Slide in'],['zoom','Zoom in'],
+        ['bounce','Bounce'],['rotate','Rotate'],['flip','3D flip']
       ]));
+      style.append(field('Entrance duration (ms)','entrance_duration_ms',s.entrance_duration_ms??520,'number','250–1600 ms. Replays when the published design version changes.'));
       style.append(choiceField('Background animation','background_motion',s.background_motion||'none',[
         ['none','None'],['pulse','Pulse'],['gradient','Gradient'],['shimmer','Shimmer'],['glow','Glow'],['fireworks','Fireworks']
       ]));
