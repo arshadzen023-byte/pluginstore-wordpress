@@ -219,3 +219,22 @@ body.toplevel_page_ark-app-designer .ark-footer { flex:0 0 auto; }
 }
 
 .ark-icon-visibility{display:grid;gap:12px}.ark-icon-page{padding:12px;border:1px solid #e4e9f2;border-radius:12px;background:#fff}.ark-icon-page>b{display:block;margin-bottom:9px}.ark-icon-page label{display:inline-flex;align-items:center;gap:5px;margin:5px 10px 5px 0;font-size:12px;color:#475569}.ark-heading-action{display:inline-flex;align-items:center}
+
+
+/* ARK App Designer 1.14: custom pages and movable native heading */
+.ark-custom-page-btn{border-left:3px solid #7764e8!important;background:#f7f5ff!important}
+.ark-preview-heading-card{border:1px dashed #6f63dc!important;background:#f7f8ff!important;cursor:grab}
+.ark-preview-heading-card:active{cursor:grabbing}
+.ark-preview-heading-card .ark-preview-label{color:#5546be!important}
+.ark-preview-app-header{box-sizing:border-box;width:100%;display:flex;align-items:center;gap:8px}
+.ark-heading-shimmer{background-image:linear-gradient(110deg,rgba(255,255,255,0) 20%,rgba(255,255,255,.34) 45%,rgba(255,255,255,0) 70%);background-size:200% 100%;animation:arkHeadingShimmer 3.8s linear infinite}
+@keyframes arkHeadingShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.ark-modal-backdrop{position:fixed;inset:0;z-index:100000;background:rgba(16,24,40,.52);display:grid;place-items:center;padding:18px}
+.ark-modal{width:min(440px,100%);background:#fff;border-radius:18px;padding:24px;box-shadow:0 22px 70px rgba(0,0,0,.25);display:flex;flex-direction:column;gap:12px}
+.ark-modal h2{margin:0;font-size:20px}
+.ark-modal p{margin:0;color:#667085;line-height:1.5}
+.ark-modal label{font-weight:700}
+.ark-modal input{width:100%;min-height:44px;border:1px solid #d5dae5;border-radius:10px;padding:10px 12px;font-size:15px}
+.ark-modal-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:8px}
+.ark-custom-page-delete{margin-top:12px;min-height:38px}
+@media(max-width:780px){.ark-modal{padding:18px}.ark-modal-actions{flex-wrap:wrap}}
