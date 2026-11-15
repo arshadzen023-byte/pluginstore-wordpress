@@ -1,12 +1,12 @@
 # ARK App Designer WordPress Plugin
 
-**Plugin:** ARK App Designer 1.14.0  
-**GlowHit app engine:** 1.0.37 (build 37)  
+**Plugin:** ARK App Designer 1.17.1  
+**GlowHit app engine:** 1.0.40 (build 40)  
 **Companion app:** ARK Studio 1.0.0
 
 ARK App Designer controls supported Flutter app layouts and splash configuration from WordPress. Install it as a separate plugin next to WooCommerce and the ARK App Push Notifications plugin.
 
-## 1.14.0 reliability updates
+## 1.17.1 Layout Designer and reliability updates
 
 - Default Heading Bar background images now persist their WordPress Media Library attachment ID and are restored from the attachment after refresh.
 - Saved Draft and Published configurations are recursively merged with newer defaults; stale editor tabs cannot remove fields that they do not know about.
@@ -16,11 +16,11 @@ ARK App Designer controls supported Flutter app layouts and splash configuration
 - Native section and gallery keys keep image/slider state stable while scrolling; image requests use the cached image layer.
 
 ## Install
-1. Download the `ark-app-designer` folder as a ZIP, or use the GitHub Actions artifact `ark-app-designer-1.14.0`.
+1. Download the `ark-app-designer` folder as a ZIP, or use the GitHub Actions artifact `ark-app-designer-1.17.1`.
 2. WordPress Admin → Plugins → Add Plugin → Upload Plugin.
 3. Upload and activate **ARK App Designer**.
 4. Open **ARK App Designer** in the WordPress admin menu.
-5. Install GlowHit APK 1.0.21 or later that contains the server-driven UI engine.
+5. Install GlowHit APK 1.0.40 or later that contains the server-driven UI engine.
 
 The app requests its published design from:
 `/wp-json/ark-designer/v1/config`
