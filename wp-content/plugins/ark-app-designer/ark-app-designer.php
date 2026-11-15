@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Designer
  * Description: Server-driven visual app designer for ARK Native / GlowHit Flutter apps, including live layout, navigation, theme and in-app splash configuration.
- * Version: 1.16.0
+ * Version: 1.17.0
  * Author: ARK
  * Requires PHP: 7.4
  */
@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class ARK_App_Designer {
-    const VERSION = '1.16.0';
+    const VERSION = '1.17.0';
     const PUBLISHED = 'ark_app_designer_published';
     const DRAFT = 'ark_app_designer_draft';
     const REVISIONS = 'ark_app_designer_revisions';
@@ -933,7 +933,7 @@ final class ARK_App_Designer {
                 $item['alignment'] = in_array(($section['alignment'] ?? 'stretch'), ['stretch','left','center','right'], true) ? ($section['alignment'] ?? 'stretch') : 'stretch';
                 $item['entrance_animation'] = in_array(($section['entrance_animation'] ?? 'none'), ['none','fade','slide','zoom'], true)
                     ? ($section['entrance_animation'] ?? 'none') : 'none';
-                $item['card_animation'] = in_array(($section['card_animation'] ?? 'none'), ['none','tilt_3d','glow'], true)
+                $item['card_animation'] = in_array(($section['card_animation'] ?? 'none'), ['none','tilt_3d','glow','fade','scale','slide','pulse'], true)
                     ? ($section['card_animation'] ?? 'none') : 'none';
                 $item['background_motion'] = in_array(($section['background_motion'] ?? 'none'), ['none','pulse','gradient','shimmer','glow','fireworks'], true) ? ($section['background_motion'] ?? 'none') : 'none';
                 if (isset($section['card_design'])) {
@@ -945,6 +945,22 @@ final class ARK_App_Designer {
                 $item['card_aspect_ratio'] = min(1.20, max(0.48, (float) ($section['card_aspect_ratio'] ?? 0.66)));
                 $item['card_image_fit'] = in_array(($section['card_image_fit'] ?? 'contain'), ['contain','cover'], true)
                     ? ($section['card_image_fit'] ?? 'contain') : 'contain';
+                if (in_array($type, ['product_grid','product_carousel'], true)) {
+                    $allowed_sources = ['latest','featured','sale','category','top_rated','wishlist','recent'];
+                    $item['source'] = in_array(($section['source'] ?? 'latest'), $allowed_sources, true)
+                        ? ($section['source'] ?? 'latest') : 'latest';
+                    $item['category_id'] = absint($section['category_id'] ?? 0);
+                    $item['tap_action_type'] = in_array(($section['tap_action_type'] ?? 'product_detail'), ['product_detail','in_app','deeplink','website'], true)
+                        ? ($section['tap_action_type'] ?? 'product_detail') : 'product_detail';
+                    $item['card_width'] = min(0.82, max(0.32, (float) ($section['card_width'] ?? 0.46)));
+                }
+                if ($type === 'category_grid') {
+                    $item['category_layout'] = in_array(($section['category_layout'] ?? 'grid'), ['grid','slider','list'], true)
+                        ? ($section['category_layout'] ?? 'grid') : 'grid';
+                    $item['category_card_style'] = in_array(($section['category_card_style'] ?? 'image'), ['image','elevated','minimal','circle'], true)
+                        ? ($section['category_card_style'] ?? 'image') : 'image';
+                    $item['show_category_count'] = !empty($section['show_category_count']);
+                }
                 if ($type === 'product_delivery') {
                     $item['delivery_style'] = in_array(($section['delivery_style'] ?? 'standard'), ['compact','standard'], true)
                         ? ($section['delivery_style'] ?? 'standard') : 'standard';
@@ -1030,6 +1046,8 @@ final class ARK_App_Designer {
         $clean['pages'] = array_intersect_key($pages, array_flip($allowed_pages));
         $navigation = is_array($clean['navigation'] ?? null) ? $clean['navigation'] : $base['navigation'];
         $navigation['visible'] = !empty($navigation['visible']);
+        $navigation['style'] = in_array(($navigation['style'] ?? 'classic'), ['classic','pill','floating','minimal'], true)
+            ? ($navigation['style'] ?? 'classic') : 'classic';
         $navigation['items'] = array_values(array_map(function($item) {
             if (!is_array($item)) return null;
             $item['key'] = sanitize_key($item['key'] ?? 'custom');
@@ -1041,7 +1059,7 @@ final class ARK_App_Designer {
             else $item['url'] = sanitize_text_field($item['url'] ?? '');
             $item['animation'] = in_array(($item['animation'] ?? 'none'), ['none','fade','scale','slide'], true) ? $item['animation'] : 'none';
             return $item;
-        }, array_filter((array) ($navigation['items'] ?? []), 'is_array')));
+        }, array_slice(array_filter((array) ($navigation['items'] ?? []), 'is_array'), 0, 5)));
 
         $clean['navigation'] = $navigation;
         // Preserve every App Identity field. Previously this whitelist kept only
