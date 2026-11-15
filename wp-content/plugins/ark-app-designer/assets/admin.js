@@ -1,6 +1,6 @@
 jQuery(function($){
   const state={config:ARKDesigner.config||{},page:'home',selected:null,view:'page',dirty:false};
-  const liveCache={categories:null,products:null,targets:null,sliders:{},sliderPending:{},loading:false};
+  const liveCache={categories:null,products:null,targets:null,targetSearch:{},sliders:{},sliderPending:{},loading:false};
   const $pages=$('#ark-pages'),$components=$('#ark-components'),$preview=$('#ark-preview'),$inspector=$('#ark-inspector-content');
   const labels={home:'Home page',categories:'Categories page',search:'Search page',wishlist:'Wishlist page',product:'Product page',account:'Account page'};
   const fixedPageKeys=Object.keys(labels);
@@ -300,6 +300,23 @@ jQuery(function($){
       markDirty();renderPreview();
     });
     wrap.append(input);
+    if(type==='number'){
+      const bounds={
+        width_pct:[10,100,1],height_px:[0,1200,1],min_height_px:[0,1200,1],max_width_px:[0,1600,1],
+        padding_top:[0,120,1],padding_right:[0,120,1],padding_bottom:[0,120,1],padding_left:[0,120,1],
+        margin_top:[0,120,1],margin_right:[0,120,1],margin_bottom:[0,120,1],margin_left:[0,120,1],
+        item_gap:[0,40,1],corner_radius:[0,60,1],columns:[1,4,1],card_depth:[0,30,1],
+        card_aspect_ratio:[0.4,2.5,0.05],interval_ms:[1000,20000,100],card_width:[0.32,1,0.01],
+        limit:[1,100,1],list_item_height:[76,240,1]
+      };
+      const [min,max,step]=bounds[key]||[0,2000,1];
+      const slider=$('<input type="range" class="ark-field-range">')
+        .attr({min,max,step}).val(value??min);
+      const valueBox=input;
+      valueBox.on('input change',()=>slider.val(valueBox.val()));
+      slider.on('input',()=>valueBox.val(slider.val()).trigger('input'));
+      wrap.append(slider);
+    }
     if(type==='url'&&['image_url','logo_url','icon_url','splash_image_url','background_image_url'].includes(key)){
       const media=$('<button type="button" class="ark-media-pick">Choose from Media Library</button>');
       media.on('click',function(e){
@@ -353,12 +370,14 @@ jQuery(function($){
   }
 
   function inAppTargetField(label,value,onChange,hint=''){
-    const wrap=$('<div class="ark-field"></div>');
+    const wrap=$('<div class="ark-field ark-target-picker"></div>');
     $('<label></label>').text(label).appendTo(wrap);
+    const search=$('<input type="search" class="ark-target-search" placeholder="Search products or categories…">');
     const select=$('<select class="ark-inapp-target"></select>');
-    const current=String(value||'');
+    let current=String(value||'');
+    let searchTimer=null;
     const fill=data=>{
-      select.empty().append($('<option></option>').val('').text('Select app page or product…'));
+      select.empty().append($('<option></option>').val('').text('Select app page, product or category…'));
       (data?.pages||[]).forEach(item=>{
         select.append($('<option></option>').val(item.value).text(item.label));
       });
@@ -392,7 +411,6 @@ jQuery(function($){
       pages:[
         {value:'page:home',label:'Home page'},
         {value:'page:categories',label:'Categories page'},
-        {value:'page:product',label:'Product page'},
         {value:'page:account',label:'Account page'},
         {value:'page:wishlist',label:'Wishlist page'},
         {value:'page:cart',label:'Cart page'}
@@ -401,14 +419,30 @@ jQuery(function($){
       custom_pages:customPageKeys().map(key=>({value:'page:'+key,label:pageLabel(key)}))
     };
     fill(liveCache.targets||defaults);
-    select.on('change',function(){onChange($(this).val());});
+    select.on('change',function(){current=String($(this).val()||'');onChange(current);});
+    search.on('input',function(){
+      const query=String($(this).val()||'').trim();
+      if(searchTimer)clearTimeout(searchTimer);
+      searchTimer=setTimeout(()=>{
+        if(liveCache.targetSearch[query]){
+          fill(liveCache.targetSearch[query]);
+          return;
+        }
+        request('studio/targets?search='+encodeURIComponent(query),'GET').then(data=>{
+          liveCache.targetSearch[query]=data;
+          if(!query)liveCache.targets=data;
+          fill(data);
+        }).catch(()=>toast('Could not search products. Please try again.',true));
+      },280);
+    });
     if(!liveCache.targets){
       request('studio/targets','GET').then(data=>{
         liveCache.targets=data;
+        liveCache.targetSearch['']=data;
         fill(data);
-      }).catch(()=>{});
+      }).catch(()=>toast('Destination list could not load.',true));
     }
-    wrap.append(select);
+    wrap.append(search,select);
     if(hint)$('<div class="description"></div>').text(hint).appendTo(wrap);
     return wrap;
   }
@@ -1166,72 +1200,95 @@ jQuery(function($){
     }
     if(s.type==='ark_live_slider'||String(s.type||'').startsWith('banner_'))renderLiveSliderInspector(s);
 
-    // Shared layout system for banner, category and product families.
+    // Shared layout properties are grouped by purpose for easier editing.
     if(['banner_grid','banner_list','banner_slider','banner_scroll','category_grid','category_list','category_list_tile','category_scroll','category_slider','product_grid','product_carousel','product_list','product_scroll'].includes(s.type) || (s.type==='ark_live_slider' && !liveCache.sliders[s.slider_key])){
       const group=$('<div class="ark-layout-property-group"></div>');
-      $('<div class="ark-layout-property-title">LAYOUT · STYLE · SETTINGS</div>').appendTo(group);
-      $('<p class="description">These shared layout properties are saved in the same page config used by the native app renderer.</p>').appendTo(group);
-      group.append(field('Section title','title',s.title||''));
-      group.append(field('Background colour','section_background',s.section_background||'#FFFFFF','color'));
-      group.append(field('Content / text colour','text_color',s.text_color||'#202733','color'));
-      group.append(field('Section width (%)','width_pct',s.width_pct??100,'number'));
-      group.append(field('Fixed height (px, 0 = auto)','height_px',s.height_px??0,'number'));
-      group.append(field('Minimum height (px)','min_height_px',s.min_height_px??0,'number'));
-      group.append(field('Maximum width (px, 0 = full)','max_width_px',s.max_width_px??0,'number'));
-      group.append(choiceField('Horizontal alignment','alignment',s.alignment||'stretch',[
+      $('<p class="description">Changes are saved to the native app configuration when you publish.</p>').appendTo(group);
+      const addGroup=label=>{
+        const section=$('<section class="ark-property-section"></section>');
+        $('<h4 class="ark-property-section-title"></h4>').text(label).appendTo(section);
+        group.append(section);
+        return section;
+      };
+      const colours=addGroup('1. COLOUR & TITLE');
+      colours.append(field('Section title','title',s.title||''));
+      colours.append(field('Background colour','section_background',s.section_background||'#FFFFFF','color'));
+      colours.append(field('Text colour','text_color',s.text_color||'#202733','color'));
+      colours.append(field('Card background','card_background',s.card_background||'#FFFFFF','color'));
+
+      const dimensions=addGroup('2. DIMENSIONS');
+      dimensions.append(field('Section width (%)','width_pct',s.width_pct??100,'number'));
+      dimensions.append(field('Fixed height (px, 0 = auto)','height_px',s.height_px??0,'number'));
+      dimensions.append(field('Minimum height (px)','min_height_px',s.min_height_px??0,'number'));
+      dimensions.append(field('Maximum width (px, 0 = full)','max_width_px',s.max_width_px??0,'number'));
+      dimensions.append(choiceField('Horizontal alignment','alignment',s.alignment||'stretch',[
         ['stretch','Full width'],['left','Left'],['center','Center'],['right','Right']
       ]));
-      group.append(field('Padding top (px)','padding_top',s.padding_top??12,'number'));
-      group.append(field('Padding right (px)','padding_right',s.padding_right??12,'number'));
-      group.append(field('Padding bottom (px)','padding_bottom',s.padding_bottom??12,'number'));
-      group.append(field('Padding left (px)','padding_left',s.padding_left??12,'number'));
-      group.append(field('Margin top (px)','margin_top',s.margin_top??0,'number'));
-      group.append(field('Margin right (px)','margin_right',s.margin_right??0,'number'));
-      group.append(field('Margin bottom (px)','margin_bottom',s.margin_bottom??0,'number'));
-      group.append(field('Margin left (px)','margin_left',s.margin_left??0,'number'));
-      group.append(field('Card / image gap (px)','item_gap',s.item_gap??8,'number'));
-      group.append(field('Corner radius (px)','corner_radius',s.corner_radius??16,'number'));
-      group.append(field('Card background colour','card_background',s.card_background||'#FFFFFF','color'));
-      group.append(choiceField('Background animation','background_motion',s.background_motion||'none',[
-        ['none','None'],['pulse','Pulse'],['gradient','Gradient'],['shimmer','Shimmer'],['glow','Glow'],['fireworks','Fireworks']
-      ]));
+
+      const padding=addGroup('3. PADDING');
+      padding.append(field('Top (px)','padding_top',s.padding_top??12,'number'));
+      padding.append(field('Right (px)','padding_right',s.padding_right??12,'number'));
+      padding.append(field('Bottom (px)','padding_bottom',s.padding_bottom??12,'number'));
+      padding.append(field('Left (px)','padding_left',s.padding_left??12,'number'));
+
+      const margin=addGroup('4. MARGIN');
+      margin.append(field('Top (px)','margin_top',s.margin_top??0,'number'));
+      margin.append(field('Right (px)','margin_right',s.margin_right??0,'number'));
+      margin.append(field('Bottom (px)','margin_bottom',s.margin_bottom??0,'number'));
+      margin.append(field('Left (px)','margin_left',s.margin_left??0,'number'));
+
+      const settings=addGroup('5. SETTINGS');
+      settings.append(field('Card / image gap (px)','item_gap',s.item_gap??8,'number'));
+      settings.append(field('Corner radius (px)','corner_radius',s.corner_radius??16,'number'));
       if(String(s.type||'').startsWith('category_')||s.type==='category_grid'){
-        group.append(choiceField('Category layout','category_layout',s.category_layout||s.layout_variant||'grid',[
+        settings.append(choiceField('Category layout','category_layout',s.category_layout||s.layout_variant||'grid',[
           ['grid','Grid'],['slider','Horizontal slider'],['scroll','Horizontal scroll'],['list','List'],['list_tile','List tile']
         ]));
-        group.append(choiceField('Category card style','category_card_style',s.category_card_style||'image',[
+        settings.append(choiceField('Category card style','category_card_style',s.category_card_style||'image',[
           ['image','Image cards'],['elevated','Elevated'],['minimal','Minimal'],['circle','Circular']
         ]));
-        group.append(field('Number of columns','columns',s.columns||4,'number'));
-        group.append(field('Show product count','show_category_count',s.show_category_count===true,'checkbox'));
+        settings.append(field('Number of columns','columns',s.columns||4,'number'));
+        settings.append(field('Show product count','show_category_count',s.show_category_count===true,'checkbox'));
       }
       if(['product_grid','product_carousel','product_list','product_scroll'].includes(s.type)){
-        group.append(choiceField('Product card design','card_design',s.card_design||'flipkart',[
+        settings.append(choiceField('Product card design','card_design',s.card_design||'flipkart',[
           ['flipkart','Flipkart'],['classic','Classic'],['elevated','Elevated'],['glass','Glass'],['compact','Compact'],['minimal','Minimal'],['3d','3D depth'],['3d_glass','3D glass']
         ]));
-        group.append(choiceField('Card animation','card_animation',s.card_animation||'none',[
+        settings.append(field('Number of products','limit',s.limit??8,'number'));
+      }
+      if(s.type==='ark_live_slider'||String(s.type||'').startsWith('banner_')){
+        const variant=s.layout_variant||({banner_grid:'grid',banner_list:'list',banner_scroll:'scroll'}[s.type]||'slider');
+        settings.append(choiceField('Banner layout','layout_variant',variant,[
+          ['grid','Banner Grid'],['list','Banner List'],['slider','Banner Slider'],['scroll','Banner Scroll']
+        ]));
+      }
+
+      const style=addGroup('6. STYLE & ANIMATION');
+      style.append(choiceField('Entrance animation','entrance_animation',s.entrance_animation||'none',[
+        ['none','None'],['fade','Fade in'],['slide','Slide in'],['zoom','Zoom in']
+      ]));
+      style.append(choiceField('Background animation','background_motion',s.background_motion||'none',[
+        ['none','None'],['pulse','Pulse'],['gradient','Gradient'],['shimmer','Shimmer'],['glow','Glow'],['fireworks','Fireworks']
+      ]));
+      if(['product_grid','product_carousel','product_list','product_scroll'].includes(s.type)){
+        style.append(choiceField('Card animation','card_animation',s.card_animation||'none',[
           ['none','None'],['fade','Fade'],['scale','Scale'],['slide','Slide'],['pulse','Pulse'],['glow','Glow'],['tilt_3d','3D tilt']
         ]));
-        group.append(field('3D depth','card_depth',s.card_depth??12,'number'));
-        group.append(field('Product card ratio','card_aspect_ratio',s.card_aspect_ratio??.66,'number'));
-        group.append(choiceField('Image fit','card_image_fit',s.card_image_fit||'contain',[
+        style.append(field('3D depth','card_depth',s.card_depth??12,'number'));
+        style.append(field('Product card ratio','card_aspect_ratio',s.card_aspect_ratio??.66,'number'));
+        style.append(choiceField('Image fit','card_image_fit',s.card_image_fit||'contain',[
           ['contain','Contain'],['cover','Cover']
         ]));
       }
       if(s.type==='ark_live_slider'||String(s.type||'').startsWith('banner_')){
-        const variant=s.layout_variant||({banner_grid:'grid',banner_list:'list',banner_scroll:'scroll'}[s.type]||'slider');
-        group.append(choiceField('Banner layout','layout_variant',variant,[
-          ['grid','Banner Grid'],['list','Banner List'],['slider','Banner Slider'],['scroll','Banner Scroll']
-        ]));
-        group.append(field('Slider height (px)','height_px',s.height_px??178,'number'));
-        group.append(field('Autoplay interval (ms)','interval_ms',s.interval_ms??3500,'number'));
-        group.append(choiceField('Slide transition','transition',s.transition||'slide',[
+        style.append(field('Autoplay interval (ms)','interval_ms',s.interval_ms??3500,'number'));
+        style.append(choiceField('Slide transition','transition',s.transition||'slide',[
           ['slide','Slide'],['fade','Fade'],['zoom','Zoom']
         ]));
       }
       const controls=$('<div class="ark-layout-settings-controls"></div>');
       $('<button type="button">Hide / show</button>').on('click',()=>{
-        s.visible=s.visible===false?true:false;markDirty();render(); 
+        s.visible=s.visible===false?true:false;markDirty();render();
       }).appendTo(controls);
       $('<button type="button">Move up</button>').on('click',()=>{
         const i=sections().findIndex(item=>item.id===s.id);if(i>0){[sections()[i-1],sections()[i]]=[sections()[i],sections()[i-1]];markDirty();render();}
