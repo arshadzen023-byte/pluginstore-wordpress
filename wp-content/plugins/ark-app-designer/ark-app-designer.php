@@ -185,9 +185,19 @@ final class ARK_App_Designer {
             'icon_grid' => ['label' => 'Icon shortcuts', 'icon' => '⊞', 'description' => 'Grid of icon links and quick actions'],
             'countdown' => ['label' => 'Countdown card', 'icon' => '◷', 'description' => 'Live countdown to a selected deadline'],
             'ark_live_slider' => ['label' => 'ARK Live Slider', 'icon' => '▧', 'description' => 'SQL-managed image campaigns with native links and scheduled slides'],
-            'category_grid' => ['label' => 'Category grid', 'icon' => '▦', 'description' => 'Live WooCommerce categories'],
-            'product_carousel' => ['label' => 'Product slider', 'icon' => '▤', 'description' => 'Featured, latest, sale or category products'],
-            'product_grid' => ['label' => 'Product grid', 'icon' => '▦', 'description' => 'Responsive product cards'],
+            'banner_grid' => ['label' => 'Banner Grid', 'icon' => '▦', 'description' => 'SQL-backed banner images in a responsive grid'],
+            'banner_list' => ['label' => 'Banner List', 'icon' => '☷', 'description' => 'SQL-backed banner images in a vertical list'],
+            'banner_slider' => ['label' => 'Banner Slider', 'icon' => '▤', 'description' => 'SQL-backed auto-sliding banner images'],
+            'banner_scroll' => ['label' => 'Banner Scroll', 'icon' => '⇆', 'description' => 'SQL-backed horizontal banner rail'],
+            'category_grid' => ['label' => 'Category Grid', 'icon' => '▦', 'description' => 'Live WooCommerce category cards'],
+            'category_list' => ['label' => 'Category List', 'icon' => '☷', 'description' => 'Live WooCommerce categories in a vertical list'],
+            'category_list_tile' => ['label' => 'Category List Tile', 'icon' => '▤', 'description' => 'Live category rows with image, title and count'],
+            'category_scroll' => ['label' => 'Category Scroll', 'icon' => '⇆', 'description' => 'Live horizontally scrolling categories'],
+            'category_slider' => ['label' => 'Category Slider', 'icon' => '▥', 'description' => 'Live swipeable category carousel'],
+            'product_carousel' => ['label' => 'Product Slider', 'icon' => '▤', 'description' => 'Featured, latest, sale or category products'],
+            'product_grid' => ['label' => 'Product Grid', 'icon' => '▦', 'description' => 'Responsive WooCommerce product cards'],
+            'product_list' => ['label' => 'Product List', 'icon' => '☷', 'description' => 'WooCommerce products in compact horizontal list rows'],
+            'product_scroll' => ['label' => 'Product Scroll', 'icon' => '⇆', 'description' => 'Swipeable WooCommerce product card rail'],
             'offer_banner' => ['label' => 'Offer card', 'icon' => '％', 'description' => 'Campaign card with button'],
             'recently_viewed' => ['label' => 'Recently viewed', 'icon' => '◷', 'description' => 'Device-local product history'],
             'image' => ['label' => 'Image', 'icon' => '▧', 'description' => 'Image with optional link'],
@@ -874,12 +884,41 @@ final class ARK_App_Designer {
             foreach ($sections as $section) {
                 if (!is_array($section)) continue;
                 $type = sanitize_key($section['type'] ?? '');
-                $legacy_banner_slider = ($type === 'banner_slider');
-                if ($legacy_banner_slider) $type = 'ark_live_slider';
-                if (!isset(self::component_catalog()[$type])) continue;
+                $designer_component_type = $type;
+                $legacy_banner_slider = $type === 'banner_slider' && (!empty($section['items']) || !empty($section['slides']) || !empty($section['images']));
+                $layout_aliases = [
+                    'banner_grid' => ['ark_live_slider','grid'],
+                    'banner_list' => ['ark_live_slider','list'],
+                    'banner_slider' => ['ark_live_slider','slider'],
+                    'banner_scroll' => ['ark_live_slider','scroll'],
+                    'category_list' => ['category_grid','list'],
+                    'category_list_tile' => ['category_grid','list_tile'],
+                    'category_scroll' => ['category_grid','scroll'],
+                    'category_slider' => ['category_grid','slider'],
+                    'product_list' => ['product_grid','list'],
+                    'product_scroll' => ['product_carousel','scroll'],
+                ];
+                $layout_variant = '';
+                if (isset($layout_aliases[$type])) {
+                    [$type, $layout_variant] = $layout_aliases[$type];
+                } elseif ($type === 'banner_slider') {
+                    $type = 'ark_live_slider';
+                    $layout_variant = 'slider';
+                } elseif ($type === 'product_grid') {
+                    $layout_variant = sanitize_key($section['layout_variant'] ?? 'grid');
+                } elseif ($type === 'product_carousel') {
+                    $layout_variant = sanitize_key($section['layout_variant'] ?? 'slider');
+                } elseif ($type === 'category_grid') {
+                    $layout_variant = sanitize_key($section['layout_variant'] ?? ($section['category_layout'] ?? 'grid'));
+                } elseif ($type === 'ark_live_slider') {
+                    $layout_variant = sanitize_key($section['layout_variant'] ?? 'slider');
+                }
+                if (!isset(self::component_catalog()[$designer_component_type]) && !isset(self::component_catalog()[$type])) continue;
                 $item = $this->clean_value($section);
                 $item['id'] = sanitize_key($section['id'] ?? wp_generate_uuid4());
                 $item['type'] = $type;
+                $item['designer_component_type'] = $designer_component_type;
+                $item['layout_variant'] = $layout_variant !== '' ? $layout_variant : ($item['layout_variant'] ?? '');
                 $item['visible'] = !array_key_exists('visible', $section) || (bool) $section['visible'];
                 if (isset($section['image_url'])) $item['image_url'] = $this->clean_url($section['image_url']);
                 if (isset($section['background_image_url'])) $item['background_image_url'] = $this->clean_url($section['background_image_url']);
@@ -931,6 +970,10 @@ final class ARK_App_Designer {
                     if (isset($section[$layout_key])) $item[$layout_key] = min($range[1], max($range[0], (float) $section[$layout_key]));
                 }
                 $item['alignment'] = in_array(($section['alignment'] ?? 'stretch'), ['stretch','left','center','right'], true) ? ($section['alignment'] ?? 'stretch') : 'stretch';
+                $item['section_background'] = sanitize_hex_color($section['section_background'] ?? '') ?: 'transparent';
+                $item['text_color'] = sanitize_hex_color($section['text_color'] ?? '') ?: '#202733';
+                $item['card_background'] = sanitize_hex_color($section['card_background'] ?? '') ?: '#FFFFFF';
+                $item['item_gap'] = min(40, max(0, absint($section['item_gap'] ?? 8)));
                 $item['entrance_animation'] = in_array(($section['entrance_animation'] ?? 'none'), ['none','fade','slide','zoom'], true)
                     ? ($section['entrance_animation'] ?? 'none') : 'none';
                 $item['card_animation'] = in_array(($section['card_animation'] ?? 'none'), ['none','tilt_3d','glow','fade','scale','slide','pulse'], true)
@@ -945,7 +988,7 @@ final class ARK_App_Designer {
                 $item['card_aspect_ratio'] = min(1.20, max(0.48, (float) ($section['card_aspect_ratio'] ?? 0.66)));
                 $item['card_image_fit'] = in_array(($section['card_image_fit'] ?? 'contain'), ['contain','cover'], true)
                     ? ($section['card_image_fit'] ?? 'contain') : 'contain';
-                if (in_array($type, ['product_grid','product_carousel'], true)) {
+                if (in_array($type, ['product_grid','product_carousel'], true) || in_array($designer_component_type, ['product_grid','product_carousel','product_list','product_scroll'], true)) {
                     $allowed_sources = ['latest','featured','sale','category','top_rated','wishlist','recent'];
                     $item['source'] = in_array(($section['source'] ?? 'latest'), $allowed_sources, true)
                         ? ($section['source'] ?? 'latest') : 'latest';
@@ -955,8 +998,8 @@ final class ARK_App_Designer {
                     $item['card_width'] = min(0.82, max(0.32, (float) ($section['card_width'] ?? 0.46)));
                 }
                 if ($type === 'category_grid') {
-                    $item['category_layout'] = in_array(($section['category_layout'] ?? 'grid'), ['grid','slider','list'], true)
-                        ? ($section['category_layout'] ?? 'grid') : 'grid';
+                    $category_layout = $section['category_layout'] ?? ($section['layout_variant'] ?? 'grid');
+                    $item['category_layout'] = in_array($category_layout, ['grid','slider','scroll','list','list_tile'], true) ? $category_layout : 'grid';
                     $item['category_card_style'] = in_array(($section['category_card_style'] ?? 'image'), ['image','elevated','minimal','circle'], true)
                         ? ($section['category_card_style'] ?? 'image') : 'image';
                     $item['show_category_count'] = !empty($section['show_category_count']);
@@ -1293,7 +1336,26 @@ final class ARK_App_Designer {
         echo '<section class="ark-canvas-area"><div class="ark-canvas-toolbar"><div><strong id="ark-canvas-title">Home page</strong><span id="ark-canvas-subtitle">Drag sections or use the arrows to change order</span></div><div class="ark-canvas-tools"><span class="ark-live-pill">● LIVE PREVIEW</span><button class="ark-icon-btn" id="ark-preview-refresh" title="Refresh preview">↻</button></div></div>';
         echo '<div class="ark-canvas-scroll"><div class="ark-phone"><div class="ark-phone-status"><span>9:41</span><span>● ● ▰</span></div><div class="ark-phone-screen" id="ark-preview"></div><div class="ark-phone-nav"><span>⌂</span><span>▦</span><span>♡</span><span>♙</span></div></div></div></section>';
         echo '<aside class="ark-inspector"><div class="ark-inspector-head"><button type="button" class="ark-panel-toggle" id="ark-toggle-right" aria-label="Collapse properties panel">⚙ Properties</button><span>PROPERTIES</span><strong id="ark-inspector-title">Select a section</strong></div><div id="ark-inspector-content" class="ark-inspector-content"><div class="ark-empty-inspector">Choose a component from the canvas to edit its settings.</div></div></aside></main>';
-        echo '<footer class="ark-footer"><span>ARK App Designer · Server-driven UI</span><span id="ark-version-label">Draft</span><span>Changes apply to supported app components after publish and sync.</span></footer></div></div>';
+        echo '<nav class="ark-layout-dock" id="ark-layout-dock" aria-label="Layout Designer"><div class="ark-layout-dock-heading"><span class="ark-layout-dock-mark">A</span><div><strong>Layout Designer</strong><small>Live app studio · edits sync to the same published config</small></div><span class="ark-layout-dock-hint">SELECT · EDIT · PUBLISH</span></div><div class="ark-layout-dock-tabs">';
+        $layout_tabs = [
+            'components' => ['▦','Components'],
+            'properties' => ['⚙','Properties'],
+            'reorder' => ['↕','Reorder'],
+            'templates' => ['▣','My templates'],
+            'pages' => ['▤','Pages'],
+            'slide_menu' => ['☷','Slide menu'],
+            'menu_edit' => ['✎','Menu edit'],
+            'navigation' => ['⌑','Navigation'],
+            'header' => ['▱','Top header'],
+            'search' => ['⌕','Search'],
+            'animations' => ['✧','Animations'],
+            'account' => ['♙','Account page'],
+        ];
+        foreach ($layout_tabs as $key => $tab) {
+            echo '<button type="button" class="ark-layout-tab" data-layout-tab="' . esc_attr($key) . '"><span>' . esc_html($tab[0]) . '</span><small>' . esc_html($tab[1]) . '</small></button>';
+        }
+        echo '</div><div class="ark-layout-dock-panel" id="ark-layout-dock-panel" hidden></div></nav>';
+        echo '<footer class="ark-footer"><span>ARK App Designer · Live Layout Studio</span><span id="ark-version-label">Draft</span><span>Save draft or Publish to sync the supported native app.</span></footer></div></div>';
     }
 }
 
