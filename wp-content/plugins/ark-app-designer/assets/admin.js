@@ -3,10 +3,19 @@ jQuery(function($){
   const liveCache={categories:null,products:null,targets:null,sliders:{},sliderPending:{},loading:false};
   const $pages=$('#ark-pages'),$components=$('#ark-components'),$preview=$('#ark-preview'),$inspector=$('#ark-inspector-content');
   const labels={home:'Home page',categories:'Categories page',search:'Search page',wishlist:'Wishlist page',product:'Product page',account:'Account page'};
+  const fixedPageKeys=Object.keys(labels);
   const collapseState={left:false,right:false};
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const page=()=>state.config.pages[state.page]||(state.config.pages[state.page]={title:labels[state.page],sections:[]});
+  const customPageKeys=()=>Object.keys(state.config.pages||{}).filter(key=>key.startsWith('custom_')&&state.config.pages[key]?.custom_page===true);
+  const isCustomPage=key=>String(key||state.page).startsWith('custom_')&&state.config.pages?.[key||state.page]?.custom_page===true;
+  const pageLabel=key=>state.config.pages?.[key]?.title||labels[key]||String(key).replace(/^custom_/,'').replace(/_/g,' ').replace(/\b\w/g,m=>m.toUpperCase());
+  const allPageKeys=()=>[...fixedPageKeys,...customPageKeys()];
+  const page=()=>state.config.pages[state.page]||(state.config.pages[state.page]={title:pageLabel(state.page),sections:[]});
   const sections=()=>page().sections||(page().sections=[]);
+  const headingForCurrentPage=()=>{
+    if(isCustomPage()) return page().heading_settings||(page().heading_settings=$.extend(true,{},state.config.default_heading||{}));
+    return state.config.default_heading||(state.config.default_heading={});
+  };
   function toast(msg,error){
     $('.ark-toast').remove();
     let text=String(msg??'');
@@ -17,7 +26,16 @@ jQuery(function($){
   function markDirty(){state.dirty=true;$('#ark-version-label').text('Unsaved changes');}
   function renderPages(){
     $pages.empty();
-    Object.keys(labels).forEach(key=>$('<button class="ark-page-btn"></button>').toggleClass('active',state.page===key).text('▣  '+labels[key]).attr('data-page',key).appendTo($pages));
+    allPageKeys().forEach(key=>{
+      const custom=isCustomPage(key);
+      $('<button class="ark-page-btn"></button>')
+        .toggleClass('active',state.page===key)
+        .toggleClass('ark-custom-page-btn',custom)
+        .text((custom?'▧  ':'▣  ')+pageLabel(key))
+        .attr('data-page',key)
+        .appendTo($pages);
+    });
+    $('#ark-page-settings').toggle(isCustomPage());
   }
   function renderComponents(){
     $components.empty();
@@ -170,20 +188,38 @@ jQuery(function($){
     const theme=state.config.theme||{};
     $preview.css('background',theme.background||'#f5f7fb');
     const app=state.config.app||{};
-    const h=state.config.default_heading||{};
+    const h=headingForCurrentPage();
     const appHeader=$('<div class="ark-preview-app-header"></div>').css({
       background:h.background_color||theme.header_background||'#fff',color:h.title_color||theme.header_text||'#202733',
-      minHeight:(Number(h.height)||64)+'px',position:'relative',overflow:'hidden'
+      minHeight:(Number(h.height)||64)+'px',position:'relative',overflow:'hidden',
+      borderRadius:'14px',padding:'9px 12px',display:'flex',alignItems:'center',gap:'8px'
     });
     if(h.show_background_image===true&&h.background_image_url){
       appHeader.css({backgroundImage:'url('+JSON.stringify(h.background_image_url)+')',backgroundSize:h.background_image_fit==='contain'?'contain':(h.background_image_fit==='fill'?'100% 100%':'cover'),backgroundPosition:'center',backgroundRepeat:'no-repeat'});
     }
-    if(h.show_app_logo!==false&&app.icon_url)$('<img alt="">').attr('src',app.icon_url).css({width:'30px',height:'30px',objectFit:'cover',borderRadius:'8px',marginRight:'9px'}).appendTo(appHeader);
-    if(h.show_icon===true)$('<span></span>').text(h.icon_name||'storefront').css({marginRight:'8px',fontWeight:800,color:h.icon_color||'#202733'}).appendTo(appHeader);
-    if(h.show_title!==false)$('<span></span>').text(h.title||app.name||'GlowHit').appendTo(appHeader);
+    if(h.background_effect==='glass')appHeader.css({backdropFilter:'blur(12px)',border:'1px solid rgba(255,255,255,.45)',boxShadow:'0 8px 24px rgba(25,45,75,.12)'});
+    if(h.background_effect==='glow')appHeader.css({boxShadow:'0 0 22px '+(h.background_color||'#8AB4F8')});
+    if(h.background_effect==='shimmer')appHeader.addClass('ark-heading-shimmer');
+    if(h.show_app_logo!==false&&app.icon_url)$('<img alt="">').attr('src',app.icon_url).css({width:'30px',height:'30px',objectFit:'cover',borderRadius:'8px',marginRight:'2px'}).appendTo(appHeader);
+    if(h.show_icon===true)$('<span></span>').text(h.icon_name||'storefront').css({marginRight:'2px',fontWeight:800,color:h.icon_color||'#202733'}).appendTo(appHeader);
+    if(h.show_title!==false)$('<b></b>').text(h.title||app.name||pageLabel(state.page)).css({flex:'1',minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}).appendTo(appHeader);
     if(h.show_button===true)$('<button type="button"></button>').text((h.button_icon||'arrow_forward')+' '+(h.button_label||'Explore')).css({marginLeft:'auto',border:0,borderRadius:'9px',padding:'8px 10px',background:h.button_background||'#2874F0',color:h.button_text_color||'#fff'}).appendTo(appHeader);
-    $preview.append(appHeader);
-    sections().forEach((s,i)=>{if(s.visible!==false)$preview.append(previewSection(s,i));});
+    const headingCard=$('<div class="ark-preview-card ark-preview-heading-card"></div>').attr('data-id','__default_heading__');
+    $('<div class="ark-preview-label"></div>').text(isCustomPage()?'Custom page heading · drag to position':'Default Heading Bar · drag to position').appendTo(headingCard);
+    headingCard.append(appHeader);
+    const visibleSections=sections().map((section,index)=>({section,index})).filter(entry=>entry.section.visible!==false);
+    const pageKey=state.page;
+    const headingIsVisible=h.enabled!==false && (Array.isArray(h.visible_pages)?h.visible_pages.includes(pageKey):true);
+    const rawPosition=Number(h.position_index ?? -1);
+    const insertAt=rawPosition<0?0:Math.min(rawPosition,visibleSections.length);
+    if(headingIsVisible){
+      if(rawPosition<0)$preview.append(headingCard);
+    }
+    visibleSections.forEach((entry,visibleIndex)=>{
+      if(headingIsVisible && rawPosition>=0 && visibleIndex===insertAt)$preview.append(headingCard);
+      $preview.append(previewSection(entry.section,entry.index));
+    });
+    if(headingIsVisible && rawPosition>=0 && insertAt>=visibleSections.length)$preview.append(headingCard);
     $('<div class="ark-preview-add">＋ Add a component from the left panel</div>').appendTo($preview);
     const nav=state.config.navigation||{};
     const navItems=Array.isArray(nav.items)?nav.items:[];
@@ -203,13 +239,22 @@ jQuery(function($){
         handle:'.ark-preview-label',
         placeholder:'ark-preview-card',
         update:function(){
-          const ordered=[];
+          const orderedVisible=[];
+          let headingPosition=-1;
+          let seenVisible=0;
           $preview.children('.ark-preview-card').each(function(){
             const id=$(this).attr('data-id');
+            if(id==='__default_heading__'){headingPosition=seenVisible;return;}
             const item=sections().find(s=>s.id===id);
-            if(item)ordered.push(item);
+            if(item){orderedVisible.push(item);seenVisible++;}
           });
-          if(ordered.length===sections().length){page().sections=ordered;markDirty();}
+          const hidden=sections().filter(item=>item.visible===false);
+          if(orderedVisible.length===sections().filter(item=>item.visible!==false).length){
+            page().sections=[...orderedVisible,...hidden];
+            const heading=headingForCurrentPage();
+            heading.position_index=headingPosition<=0?-1:headingPosition;
+            markDirty();
+          }
         }
       });
     }
@@ -231,16 +276,22 @@ jQuery(function($){
     if(type!=='checkbox')input.val(value??'');
     input.attr('data-field',key).on('input change',function(){
       let target=selected();
+      let targetKey=key;
       if(state.view==='theme') target=state.config.theme||(state.config.theme={});
       if(state.view==='celebration') target=state.config.celebration||(state.config.celebration={enabled:false,duration_ms:4200,pages:['home']});
-      if(state.view==='splash' && key.startsWith('loading_')){target=state.config.loading||(state.config.loading={enabled:true,animation_url:'https://pluginstore.shop/wp-content/themes/ark-material-commerce/assets/animations/loading.json',duration_ms:900,pages:['home','categories','product','account']});key=key.substring(8);}
-      else if(state.view==='splash') target=state.config.splash||(state.config.splash={});
+      if(state.view==='loading') target=state.config.loading||(state.config.loading={enabled:true,animation_url:'',duration_ms:900,size:58,pages:['home','categories','product','account']});
+      if(state.view==='splash' && targetKey.startsWith('loading_')){
+        target=state.config.loading||(state.config.loading={enabled:true,animation_url:'',duration_ms:900,size:58,pages:['home','categories','product','account']});
+        targetKey=targetKey.substring(8);
+      }else if(state.view==='splash') target=state.config.splash||(state.config.splash={});
       if(state.view==='navigation') target=state.config.navigation||(state.config.navigation={});
       if(state.view==='app') target=state.config.app||(state.config.app={});
       if(state.view==='default_heading') target=state.config.default_heading||(state.config.default_heading={enabled:true,visible_pages:['home','categories','wishlist','account']});
+      if(state.view==='page_settings' && targetKey==='page_title'){target=page();targetKey='title';}
+      else if(state.view==='page_settings') target=page().heading_settings||(page().heading_settings=$.extend(true,{},state.config.default_heading||{}));
       if(!target)return;
       const fieldValue=type==='checkbox'?$(this).is(':checked'):(type==='number'?Number($(this).val()):$(this).val());
-      target[key]=key==='pages' && (target===state.config.loading||target===state.config.celebration)?String(fieldValue).split(',').map(v=>v.trim()).filter(Boolean):fieldValue;
+      target[targetKey]=targetKey==='pages' && (target===state.config.loading||target===state.config.celebration)?String(fieldValue).split(',').map(v=>v.trim()).filter(Boolean):fieldValue;
       markDirty();renderPreview();
     });
     wrap.append(input);
@@ -251,7 +302,22 @@ jQuery(function($){
         const frame=wp.media({title:'Select image',button:{text:'Use image'},multiple:false});
         frame.on('select',function(){
           const item=frame.state().get('selection').first().toJSON();
-          input.val(item.url).trigger('change');
+          const target=state.view==='default_heading'
+            ? (state.config.default_heading||(state.config.default_heading={}))
+            : state.view==='page_settings'
+              ? (page().heading_settings||(page().heading_settings=$.extend(true,{},state.config.default_heading||{})))
+              : selected();
+          // Persist the attachment ID as the source of truth. WordPress can
+          // then re-resolve its canonical URL after a Designer refresh, even
+          // if the Media Library serves a resized/CDN URL in the picker.
+          if(target && key==='background_image_url'){
+            target.background_image_id=Number(item.id)||0;
+            target.background_image_url=String(item.url||'');
+            target.show_background_image=!!target.background_image_url;
+            markDirty();
+          }
+          input.val(item.url||'').trigger('change');
+          renderPreview();
         });
         frame.open();
       });
@@ -269,6 +335,8 @@ jQuery(function($){
       let target=selected();
       if(state.view==='app') target=state.config.app||(state.config.app={});
       if(state.view==='default_heading') target=state.config.default_heading||(state.config.default_heading={enabled:true,visible_pages:['home','categories','wishlist','account']});
+      if(state.view==='page_settings') target=page().heading_settings||(page().heading_settings=$.extend(true,{},state.config.default_heading||{}));
+      if(state.view==='loading') target=state.config.loading||(state.config.loading={enabled:true,animation_url:'',duration_ms:900,size:58,pages:['home','categories','product','account']});
       if(state.view==='theme') target=state.config.theme||(state.config.theme={});
       if(state.view==='splash') target=state.config.splash||(state.config.splash={});
       if(!target)return;
@@ -295,6 +363,15 @@ jQuery(function($){
         products.forEach(item=>group.append($('<option></option>').val('product:'+item.id).text('#'+item.id+' · '+(item.name||'Product'))));
         select.append(group);
       }
+      const serverCustomPages=Array.isArray(data?.custom_pages)?data.custom_pages:[];
+      const customMap=new Map(serverCustomPages.map(item=>[item.value,item]));
+      customPageKeys().forEach(key=>customMap.set('page:'+key,{value:'page:'+key,label:pageLabel(key)}));
+      const customPages=[...customMap.values()];
+      if(customPages.length){
+        const group=$('<optgroup label="Custom pages"></optgroup>');
+        customPages.forEach(item=>group.append($('<option></option>').val(item.value).text(item.label||item.value)));
+        select.append(group);
+      }
       const categories=data?.categories||[];
       if(categories.length){
         const group=$('<optgroup label="WooCommerce categories"></optgroup>');
@@ -315,7 +392,8 @@ jQuery(function($){
         {value:'page:wishlist',label:'Wishlist page'},
         {value:'page:cart',label:'Cart page'}
       ],
-      products:liveCache.products||[]
+      products:liveCache.products||[],
+      custom_pages:customPageKeys().map(key=>({value:'page:'+key,label:pageLabel(key)}))
     };
     fill(liveCache.targets||defaults);
     select.on('change',function(){onChange($(this).val());});
@@ -553,8 +631,9 @@ jQuery(function($){
       $('#ark-inspector-title').text('Icon visibility by page');
       const app=state.config.app||(state.config.app={});
       const map=app.icon_visibility||(app.icon_visibility={});
-      const pages=['home','search','categories','product','wishlist','account'];
+      const pages=allPageKeys();
       const iconsByPage={home:['app_icon','app_name','page_title','refresh','notifications','cart','default_heading_icon','default_heading_title','default_heading_button','voice_search','camera_search'],categories:['app_icon','app_name','page_title','refresh','notifications','cart','default_heading_icon','default_heading_title','default_heading_button'],wishlist:['app_icon','app_name','page_title','refresh','notifications','cart','default_heading_icon','default_heading_title','default_heading_button'],account:['app_icon','app_name','page_title','refresh','notifications','cart','default_heading_icon','default_heading_title','default_heading_button'],search:['cart','voice_search','camera_search'],product:['page_title','cart','wishlist','share','add_to_cart','buy_now']};
+      customPageKeys().forEach(key=>{iconsByPage[key]=['app_icon','app_name','page_title','refresh','notifications','cart','default_heading_icon','default_heading_title','default_heading_button'];});
       const panel=$('<div class="ark-icon-visibility"></div>');
       pages.forEach(pageKey=>{
         const group=$('<div class="ark-icon-page"></div>');
@@ -572,41 +651,42 @@ jQuery(function($){
       $inspector.append(panel);
       return;
     }
-    if(state.view==='default_heading'){
-      $('#ark-inspector-title').text('Default Heading Bar');
-      const h=state.config.default_heading||(state.config.default_heading={
-        enabled:true,visible_pages:['home','categories','wishlist','account'],show_app_logo:true,show_app_name:true,
-        show_icon:false,icon_name:'storefront',show_title:true,title:'',show_button:false,button_label:'Explore',
-        button_icon:'arrow_forward',button_link_type:'in_app',button_url:'page:categories',
-        background_color:'#FFFFFF',background_image_url:'',show_background_image:false,background_image_fit:'cover',
-        title_color:'#202733',icon_color:'#202733',button_background:'#2874F0',button_text_color:'#FFFFFF',height:64
-      });
-      $inspector.append(field('Enable Default Heading Bar','enabled',h.enabled!==false,'checkbox'));
+    if(state.view==='default_heading' || state.view==='page_settings'){
+      const custom=isCustomPage() && state.view==='page_settings';
+      $('#ark-inspector-title').text(custom?'Custom Page · Heading & Settings':'Default Heading Bar');
+      const h=headingForCurrentPage();
+      if(custom)$inspector.append(field('Page name','page_title',page().title||pageLabel(state.page)));
+      $inspector.append(field('Enable heading bar','enabled',h.enabled!==false,'checkbox'));
       $inspector.append(field('Show existing app logo','show_app_logo',h.show_app_logo!==false,'checkbox'));
       $inspector.append(field('Show existing app name','show_app_name',h.show_app_name!==false,'checkbox'));
       $inspector.append(field('Show Material Icon','show_icon',h.show_icon===true,'checkbox'));
       $inspector.append(field('Material Icon name','icon_name',h.icon_name||'storefront','text','Examples: storefront, home, category, local_offer, bolt, verified, support_agent.'));
       $inspector.append(field('Show heading title','show_title',h.show_title!==false,'checkbox'));
-      $inspector.append(field('Heading title (blank = page/app name)','title',h.title||''));
+      if(!custom)$inspector.append(field('Heading title (blank = page/app name)','title',h.title||''));
       $inspector.append(field('Heading title colour','title_color',h.title_color||'#202733','color'));
       $inspector.append(field('Heading icon colour','icon_color',h.icon_color||'#202733','color'));
       $inspector.append(field('Default heading background colour','background_color',h.background_color||'#FFFFFF','color'));
       $inspector.append(field('Show background image','show_background_image',h.show_background_image===true,'checkbox'));
-      $inspector.append(field('Background image / GIF','background_image_url',h.background_image_url||'','url','Choose from Media Library. The image is used behind the existing app header.'));
+      $inspector.append(field('Background image / GIF','background_image_url',h.background_image_url||'','url','Choose from Media Library. Attachment ID and URL are saved for reliable restore after refresh.'));
       $inspector.append(choiceField('Background image fit','background_image_fit',h.background_image_fit||'cover',[['cover','Cover'],['contain','Contain'],['fill','Stretch']]));
+      $inspector.append(choiceField('Background effect','background_effect',h.background_effect||'none',[
+        ['none','None'],['glass','Glass'],['blur','Blur'],['shimmer','Shimmer'],['glow','Glow'],['gradient','Gradient']
+      ]));
       $inspector.append(field('Heading height (px)','height',h.height||64,'number'));
+      $inspector.append(field('Heading position (component order)','position_index',Number(h.position_index??-1),'number','-1 keeps it as the fixed app bar. 0–50 moves it into the scrollable page between components.'));
+      $inspector.append(choiceField('Heading bar animation','animation',h.animation||'none',[['none','None'],['pulse','Soft pulse'],['gradient','Animated gradient'],['slide','Gentle slide'],['shimmer','Shimmer'],['float','Float']]));
       $inspector.append(field('Show new action button','show_button',h.show_button===true,'checkbox'));
       $inspector.append(field('Button title','button_label',h.button_label||'Explore'));
       $inspector.append(field('Button Material Icon','button_icon',h.button_icon||'arrow_forward','text','Examples: arrow_forward, chevron_right, shopping_bag, bolt, local_offer.'));
       const mode=h.button_link_type||'in_app';
       $inspector.append(choiceField('Button link type','button_link_type',mode,[['in_app','In-app page / product'],['chrome','Website'],['deeplink','App deep link']]));
-      if(mode==='in_app')$inspector.append(inAppTargetField('Button destination',h.button_url||'page:categories',value=>{h.button_url=value;markDirty();renderPreview();},'Select a native page or WooCommerce product.'));
+      if(mode==='in_app')$inspector.append(inAppTargetField('Button destination',h.button_url||'page:categories',value=>{h.button_url=value;markDirty();renderPreview();},'Select a native page, custom page or WooCommerce product.'));
       else $inspector.append(field('Button URL / deep link','button_url',h.button_url||'',mode==='chrome'?'url':'text'));
       $inspector.append(field('Button background colour','button_background',h.button_background||'#2874F0','color'));
       $inspector.append(field('Button text colour','button_text_color',h.button_text_color||'#FFFFFF','color'));
       const pageWrap=$('<div class="ark-field"><label>Visible on pages</label></div>');
       const pageList=$('<div class="ark-icon-visibility"></div>');
-      ['home','categories','search','wishlist','account'].forEach(key=>{
+      allPageKeys().forEach(key=>{
         const label=$('<label></label>');
         const cb=$('<input type="checkbox">').prop('checked',Array.isArray(h.visible_pages)?h.visible_pages.includes(key):key!=='search');
         cb.on('change',()=>{
@@ -614,10 +694,44 @@ jQuery(function($){
           h.visible_pages=cb.is(':checked')?[...new Set([...h.visible_pages,key])]:h.visible_pages.filter(item=>item!==key);
           markDirty();renderPreview();
         });
-        label.append(cb,document.createTextNode(' '+labels[key]));pageList.append(label);
+        label.append(cb,document.createTextNode(' '+pageLabel(key)));pageList.append(label);
       });
       pageWrap.append(pageList);$inspector.append(pageWrap);
-      $('<p class="description">This edits the app’s existing top heading bar. It does not add a Heading component to the page. Existing logo, title and app actions remain available.</p>').appendTo($inspector);
+      if(custom){
+        const deleteButton=$('<button type="button" class="ark-menu-delete ark-custom-page-delete">Delete this page</button>');
+        deleteButton.on('click',function(){
+          if(!window.confirm('Delete '+pageLabel(state.page)+' and all its components?'))return;
+          const key=state.page;
+          delete state.config.pages[key];
+          const removeKey=list=>Array.isArray(list)?list.filter(value=>value!==key):list;
+          if(state.config.default_heading)state.config.default_heading.visible_pages=removeKey(state.config.default_heading.visible_pages);
+          Object.values(state.config.pages||{}).forEach(pageData=>{
+            if(Array.isArray(pageData.sections))pageData.sections.forEach(section=>{if(Array.isArray(section.visible_pages))section.visible_pages=removeKey(section.visible_pages);});
+          });
+          state.page='home';state.selected=null;state.view='page';markDirty();render();
+        });
+        $inspector.append(deleteButton);
+      }
+      $('<p class="description">This edits the existing app heading bar. Drag its heading preview card to place it between page components, or set position to -1 to keep it pinned at the top.</p>').appendTo($inspector);
+      return;
+    }
+    if(state.view==='loading'){
+      $('#ark-inspector-title').text('Loading animation');
+      const loading=state.config.loading||(state.config.loading={enabled:true,animation_url:'',duration_ms:900,size:58,pages:['home','categories','product','account']});
+      $inspector.append(field('Enable loading animation','enabled',loading.enabled!==false,'checkbox'));
+      $inspector.append(field('Animation JSON URL (blank = bundled local animation)','animation_url',loading.animation_url||'','url'));
+      $inspector.append(field('Loading duration (ms)','duration_ms',loading.duration_ms||900,'number'));
+      $inspector.append(field('Animation size (px)','size',loading.size||58,'number'));
+      const wrap=$('<div class="ark-field"><label>Visible on pages</label></div>');
+      const pageList=$('<div class="ark-icon-visibility"></div>');
+      allPageKeys().forEach(key=>{
+        const label=$('<label></label>');
+        const cb=$('<input type="checkbox">').prop('checked',Array.isArray(loading.pages)?loading.pages.includes(key):true);
+        cb.on('change',()=>{if(!Array.isArray(loading.pages))loading.pages=[];loading.pages=cb.is(':checked')?[...new Set([...loading.pages,key])]:loading.pages.filter(item=>item!==key);markDirty();});
+        label.append(cb,document.createTextNode(' '+pageLabel(key)));pageList.append(label);
+      });
+      wrap.append(pageList);$inspector.append(wrap);
+      $('<p class="description">The bundled Lottie animation is loaded locally. Leave URL blank to use the in-app asset, with a progress indicator fallback if the animation cannot be decoded.</p>').appendTo($inspector);
       return;
     }
     if(state.view==='app'){
@@ -697,8 +811,15 @@ jQuery(function($){
         icon.on('input',()=>{item.icon=icon.val();markDirty();});
         const type=$('<select><option value="in_app">In-app page</option><option value="deeplink">Deep link</option><option value="chrome">Open in Chrome</option></select>').val(item.link_type||'in_app');
         type.on('change',()=>{item.link_type=type.val();renderInspector();markDirty();});
-        const target=$('<input type="text" placeholder="Page key / deep link / URL">').val(item.url||item.target||item.key||'home');
-        target.on('input',()=>{item.target=target.val();item.url=target.val();markDirty();});
+        let target;
+        if((item.link_type||'in_app')==='in_app'){
+          const savedTarget=String(item.target||item.url||item.key||'home');
+          const normalizedTarget=savedTarget.startsWith('page:')||savedTarget.startsWith('product:')?savedTarget:'page:'+savedTarget;
+          target=inAppTargetField('Menu destination',normalizedTarget,value=>{item.target=value;item.url=value;markDirty();},'Custom pages created in this Designer are available here automatically.');
+        }else{
+          target=$('<input type="text" placeholder="Deep link / URL">').val(item.url||item.target||'');
+          target.on('input',()=>{item.target=target.val();item.url=target.val();markDirty();});
+        }
         const animation=$('<select><option value="none">No animation</option><option value="fade">Fade</option><option value="scale">Scale</option><option value="slide">Slide</option></select>').val(item.animation||'none');
         animation.on('change',()=>{item.animation=animation.val();markDirty();});
         card.append(label,icon,type,target,animation);
@@ -1040,7 +1161,7 @@ jQuery(function($){
     ]).then(([cats,products,targets])=>{liveCache.categories=Array.isArray(cats)?cats:[];liveCache.products=Array.isArray(products)?products:[];liveCache.targets=targets;renderPreview();if(state.selected)renderInspector();})
     .finally(()=>{liveCache.loading=false;});
   }
-  function render(){renderPages();renderPreview();renderInspector();$('#ark-canvas-title').text(labels[state.page]||state.page);}
+  function render(){renderPages();renderPreview();renderInspector();$('#ark-canvas-title').text(pageLabel(state.page));}
   function addComponent(type){
     const id='section-'+Date.now();
     const defaults={id,type,visible:true,title:ARKDesigner.components[type]?.label||type};
@@ -1054,6 +1175,41 @@ jQuery(function($){
     if(type==='address_selector')Object.assign(defaults,{title:'Delivery address',subtitle:'Choose where your order should arrive.',address_style:'flipkart',show_edit:true,show_phone:true,show_city_pin:true,allow_address_switch:true,compact_on_mobile:false});
     if(type==='account_menu')Object.assign(defaults,{items:[{title:'My Orders',subtitle:'Track and view purchases',icon:'receipt',action:'orders'},{title:'My Downloads',subtitle:'Your purchased files',icon:'download',action:'downloads'},{title:'Edit Address',subtitle:'Manage delivery address',icon:'location',action:'address'},{title:'Edit Account Details',subtitle:'Update your profile',icon:'person',action:'profile'},{title:'Sign Out',subtitle:'Sign out of this device',icon:'logout',action:'logout'}]});
     sections().push(defaults);state.selected=id;state.view='page';markDirty();render();
+  }
+  function openAddPageDialog(){
+    if($('#ark-add-page-modal').length)return;
+    const modal=$(`
+      <div class="ark-modal-backdrop" id="ark-add-page-modal">
+        <div class="ark-modal" role="dialog" aria-modal="true" aria-labelledby="ark-add-page-title">
+          <h2 id="ark-add-page-title">Add New Page</h2>
+          <p>Create a native app page. It will be added to component link destinations after saving.</p>
+          <label>Page name</label>
+          <input id="ark-new-page-name" type="text" maxlength="40" placeholder="e.g. Offers, About us, Support">
+          <div class="ark-modal-actions">
+            <button type="button" class="ark-btn ark-btn-ghost" id="ark-cancel-new-page">Cancel</button>
+            <button type="button" class="ark-btn ark-btn-publish" id="ark-confirm-new-page">Create page</button>
+          </div>
+        </div>
+      </div>`);
+    $('body').append(modal);
+    $('#ark-new-page-name').trigger('focus');
+    $('#ark-cancel-new-page').on('click',()=>modal.remove());
+    $('#ark-confirm-new-page').on('click',()=>{
+      const title=String($('#ark-new-page-name').val()||'').trim();
+      if(!title){toast('Enter a page name.',true);return;}
+      const slug=title.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,32);
+      if(!slug){toast('Use a page name with letters or numbers.',true);return;}
+      let key='custom_'+slug, suffix=2;
+      while(state.config.pages[key])key='custom_'+slug+'_'+suffix++;
+      const heading=$.extend(true,{},state.config.default_heading||{});
+      heading.visible_pages=[...new Set([...(heading.visible_pages||[]),key])];
+      heading.position_index=-1;
+      state.config.pages[key]={title,custom_page:true,heading_settings:heading,sections:[]};
+      if(liveCache.targets){if(!Array.isArray(liveCache.targets.custom_pages))liveCache.targets.custom_pages=[];liveCache.targets.custom_pages.push({value:'page:'+key,label:title});}
+      state.page=key;state.selected=null;state.view='page';state.dirty=true;
+      modal.remove();markDirty();render();
+      toast('Created '+title+'. Add components, customize its heading, then Publish changes.');
+    });
   }
   function request(path,method,data){
     return fetch(ARKDesigner.restUrl+path,{method,headers:{'Content-Type':'application/json','X-WP-Nonce':ARKDesigner.nonce},body:data?JSON.stringify(data):undefined,credentials:'same-origin'}).then(async r=>{const j=await r.json();if(!r.ok)throw new Error(j.message||'Request failed');return j;});
@@ -1069,6 +1225,7 @@ jQuery(function($){
     $(this).attr('aria-label',collapseState.right?'Expand properties panel':'Collapse properties panel').attr('aria-expanded',String(!collapseState.right));
   });
   $('#ark-pages').on('click','button',function(){state.page=$(this).data('page');state.selected=null;state.view='page';render();});
+  $('#ark-add-page').on('click',openAddPageDialog);
   $('#ark-components').on('click','button',function(){addComponent($(this).data('type'));});
   $('.ark-quick-link').on('click',function(){state.view=$(this).data('view');state.selected=null;renderInspector();});
   $preview.on('click','[data-move]',function(){
