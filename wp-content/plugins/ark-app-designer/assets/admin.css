@@ -299,3 +299,18 @@ body.toplevel_page_ark-app-designer .ark-footer { flex:0 0 auto; }
 .ark-preview-layout-slider .ark-preview-product img{height:82px;}
 .ark-preview-layout-slider .ark-preview-product b,.ark-preview-layout-slider .ark-preview-product small{padding:0 6px;}
 .ark-preview-layout-grid .ark-preview-product{min-width:0;}
+
+/* Layout Designer inspector: clear groups and usable numeric sliders on desktop/mobile. */
+.ark-designer-app{color-scheme:light}
+.ark-property-section{margin:0 0 13px;padding:12px;border:1px solid var(--ark-line);border-radius:12px;background:#fff;min-width:0}
+.ark-property-section-title{margin:0 0 12px;color:#4658c9;font-size:10px;font-weight:900;letter-spacing:.65px}
+.ark-property-section .ark-field:last-child{margin-bottom:2px}
+.ark-field-range{display:block;width:100%;max-width:100%;height:22px;margin:7px 0 0;padding:0!important;accent-color:#6657df;background:transparent!important;border:0!important;cursor:pointer}
+.ark-target-search{margin:0 0 8px}
+.ark-target-picker .ark-inapp-target{min-height:42px}
+.ark-layout-property-group>.description{margin:0 0 12px;line-height:1.5}
+@media(max-width:760px){.ark-property-section{padding:10px;margin-bottom:10px}.ark-field-range{height:26px}.ark-layout-property-group{min-width:0}}
+
+.ark-release-stamp{display:flex;align-items:center;gap:9px;margin:0 0 9px;padding:7px 11px;border:1px solid #dfe5f0;border-radius:9px;background:#f7f8fc;color:#4d5d7a;font-size:10px}
+.ark-release-stamp strong{color:#3349ab;font-size:11px}
+.ark-release-stamp span{margin-left:auto;color:#7d879c}
