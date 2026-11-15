@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Designer
  * Description: Server-driven visual app designer for ARK Native / GlowHit Flutter apps, including live layout, navigation, theme and in-app splash configuration.
- * Version: 1.17.0
+ * Version: 1.17.1
  * Author: ARK
  * Requires PHP: 7.4
  */
@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class ARK_App_Designer {
-    const VERSION = '1.17.0';
+    const VERSION = '1.17.1';
     const PUBLISHED = 'ark_app_designer_published';
     const DRAFT = 'ark_app_designer_draft';
     const REVISIONS = 'ark_app_designer_revisions';
@@ -347,9 +347,12 @@ final class ARK_App_Designer {
     private function normalize_slider_link($type, $value) {
         $type = in_array($type, ['in_app','deeplink','chrome'], true) ? $type : 'in_app';
         $value = trim((string) $value);
-        if ($type === 'chrome') return [$type, $this->clean_url($value)];
+        if ($type === 'chrome') {
+            if ($value !== '' && !preg_match('/^https?:\\/\\//i', $value)) $value = 'https://' . $value;
+            return [$type, $this->clean_url($value)];
+        }
         if ($type === 'in_app') {
-            if (preg_match('/^(page:(home|categories|product|account|wishlist|cart)|product:[0-9]+|category:[0-9]+)$/', $value)) {
+            if (preg_match('/^(page:(home|categories|account|wishlist|cart|orders|notifications|custom_[a-z0-9_]{1,40})|product:[0-9]+|category:[0-9]+)$/', $value)) {
                 return [$type, $value];
             }
             return [$type, ''];
@@ -653,11 +656,16 @@ final class ARK_App_Designer {
     public function api_studio_targets($request) {
         $products = [];
         $categories = [];
+        $search = sanitize_text_field((string) $request->get_param('search'));
+        // Keep the initial target picker fast; product search loads a small
+        // matching page instead of transferring hundreds of full product objects.
         if (function_exists('wc_get_products')) {
-            $found = wc_get_products([
-                'status' => 'publish', 'limit' => 250, 'orderby' => 'title',
+            $query = [
+                'status' => 'publish', 'limit' => 50, 'orderby' => 'title',
                 'order' => 'ASC', 'return' => 'objects',
-            ]);
+            ];
+            if ($search !== '') $query['search'] = $search;
+            $found = wc_get_products($query);
             foreach ($found as $product) {
                 $products[] = [
                     'id' => (int) $product->get_id(),
@@ -666,7 +674,9 @@ final class ARK_App_Designer {
             }
         }
         if (function_exists('get_terms')) {
-            $terms = get_terms(['taxonomy' => 'product_cat', 'hide_empty' => false, 'number' => 250]);
+            $term_query = ['taxonomy' => 'product_cat', 'hide_empty' => false, 'number' => 50];
+            if ($search !== '') $term_query['search'] = $search;
+            $terms = get_terms($term_query);
             if (!is_wp_error($terms)) {
                 foreach ($terms as $term) {
                     $categories[] = ['id' => (int) $term->term_id, 'name' => $term->name];
@@ -678,7 +688,6 @@ final class ARK_App_Designer {
             'pages' => [
                 ['value' => 'page:home', 'label' => 'Home page'],
                 ['value' => 'page:categories', 'label' => 'Categories page'],
-                ['value' => 'page:product', 'label' => 'Product page'],
                 ['value' => 'page:account', 'label' => 'Account page'],
                 ['value' => 'page:wishlist', 'label' => 'Wishlist page'],
                 ['value' => 'page:cart', 'label' => 'Cart page'],
@@ -1332,6 +1341,7 @@ final class ARK_App_Designer {
         echo '<div class="wrap ark-designer-wrap"><div class="ark-designer-app">';
         echo '<header class="ark-topbar"><div class="ark-brand"><span class="ark-brand-mark">A</span><div><strong>ARK App Designer</strong><small>Visual studio for GlowHit</small></div></div>';
         echo '<div class="ark-top-actions"><span class="ark-status"><i></i> Connected to WordPress</span><button class="ark-btn ark-btn-ghost" id="ark-save-draft">Save draft</button><button class="ark-btn ark-btn-publish" id="ark-publish">Publish changes ↗</button></div></header>';
+        echo '<div class="ark-release-stamp" data-ark-designer-version="1.17.1" data-ark-source-revision="1.17.1"><strong>ARK App Designer 1.17.1</strong><span>Layout Studio</span></div>';
         echo '<main class="ark-workspace"><aside class="ark-sidebar"><button type="button" class="ark-panel-toggle" id="ark-toggle-left" aria-label="Collapse components panel">☰ Components</button><div class="ark-sidebar-title">BUILD YOUR APP</div><div class="ark-page-list" id="ark-pages"></div><div class="ark-sidebar-divider"></div><button type="button" class="ark-quick-link" data-view="default_heading">▤ Default heading bar</button><button type="button" class="ark-quick-link" id="ark-add-page">＋ Add New Page</button><button type="button" class="ark-quick-link" id="ark-page-settings" data-view="page_settings" style="display:none">⚙ Page Settings</button><div class="ark-sidebar-divider"></div><div class="ark-sidebar-title">ADD COMPONENT</div><div class="ark-component-list" id="ark-components"></div><div class="ark-sidebar-divider"></div><button class="ark-quick-link" data-view="app">✎ App name & identity</button><button class="ark-quick-link" data-view="theme">◈ Theme & colours</button><button class="ark-quick-link" data-view="celebration">✧ Crackers animation</button><button class="ark-quick-link" data-view="loading">◌ Loading animation</button><button class="ark-quick-link" data-view="navigation">☷ Navigation</button><button class="ark-quick-link" data-view="icon_visibility">◉ Icon visibility</button><button class="ark-quick-link" data-view="source">⌘ App source files</button></aside>';
         echo '<section class="ark-canvas-area"><div class="ark-canvas-toolbar"><div><strong id="ark-canvas-title">Home page</strong><span id="ark-canvas-subtitle">Drag sections or use the arrows to change order</span></div><div class="ark-canvas-tools"><span class="ark-live-pill">● LIVE PREVIEW</span><button class="ark-icon-btn" id="ark-preview-refresh" title="Refresh preview">↻</button></div></div>';
         echo '<div class="ark-canvas-scroll"><div class="ark-phone"><div class="ark-phone-status"><span>9:41</span><span>● ● ▰</span></div><div class="ark-phone-screen" id="ark-preview"></div><div class="ark-phone-nav"><span>⌂</span><span>▦</span><span>♡</span><span>♙</span></div></div></div></section>';
