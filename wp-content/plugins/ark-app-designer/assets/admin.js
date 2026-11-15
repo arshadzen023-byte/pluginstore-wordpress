@@ -811,6 +811,9 @@ jQuery(function($){
       const nav=state.config.navigation||(state.config.navigation={items:[],visible:true});
       if(!Array.isArray(nav.items))nav.items=[];
       $inspector.append(field('Show bottom navigation','visible',nav.visible!==false,'checkbox'));
+      const navStyle=$('<div class="ark-field"><label>Navigation UI style</label><select><option value="classic">Classic bottom bar</option><option value="pill">Pill navigation</option><option value="floating">Floating rounded bar</option><option value="minimal">Minimal icon bar</option></select></div>');
+      navStyle.find('select').val(nav.style||'classic').on('change',e=>{nav.style=e.target.value;markDirty();renderPreview();});
+      $inspector.append(navStyle);
       const list=$('<div class="ark-menu-builder"></div>');
       nav.items.forEach((item,i)=>{
         const card=$('<div class="ark-menu-item"></div>');
@@ -836,7 +839,7 @@ jQuery(function($){
         $('<button type="button" class="ark-menu-delete">Delete menu item</button>').on('click',()=>{nav.items.splice(i,1);markDirty();renderInspector();}).appendTo(card);
         list.append(card);
       });
-      $('<button type="button" class="ark-menu-add">＋ Add menu item</button>').on('click',()=>{nav.items.push({key:'custom-'+Date.now(),label:'New menu',icon:'widgets',link_type:'in_app',target:'home',animation:'fade'});markDirty();renderInspector();}).appendTo(list);
+      $('<button type="button" class="ark-menu-add">＋ Add menu item</button>').on('click',()=>{if(nav.items.length>=5){window.alert('You can add up to 5 navigation buttons.');return;}nav.items.push({key:'custom-'+Date.now(),label:'New menu',icon:'widgets',link_type:'in_app',target:'page:home',url:'page:home',animation:'fade'});markDirty();renderInspector();}).appendTo(list);
       $inspector.append(list);
       $('<p class="description">In-app page: home/categories/product/account. Deep link: app URL scheme. Chrome: HTTPS website URL.</p>').appendTo($inspector);
       return;
@@ -919,7 +922,7 @@ jQuery(function($){
         ['flipkart','Flipkart clean'],['classic','Classic'],['elevated','Elevated'],['glass','Soft glass'],['compact','Compact'],['minimal','Minimal'],['3d','3D tilt card'],['3d_glass','3D glass card']
       ]));
       $inspector.append(choiceField('Product card animation','card_animation',s.card_animation||'none',[
-        ['none','None'],['tilt_3d','Interactive 3D tilt'],['glow','Soft glow']
+        ['none','None'],['fade','Fade in'],['scale','Scale in'],['slide','Slide in'],['pulse','Pulse'],['tilt_3d','Interactive 3D tilt'],['glow','Soft glow']
       ]));
       $inspector.append(field('3D depth','card_depth',s.card_depth??12,'number','Set 0 to disable depth. Range 0–30.'));
       $inspector.append(field('Card radius (px)','card_radius',s.card_radius??14,'number'));
@@ -1111,19 +1114,33 @@ jQuery(function($){
     if(['product_grid','product_carousel','recently_viewed','category_grid','icon_grid'].includes(s.type)){
       $inspector.append(field('Maximum items','limit',s.limit||8,'number'));
       if(s.type==='product_grid'||s.type==='category_grid'||s.type==='icon_grid')$inspector.append(field('Columns','columns',s.columns||2,'number'));
+      if(s.type==='category_grid'){
+        $inspector.append(choiceField('Category layout','category_layout',s.category_layout||'grid',[
+          ['grid','Responsive grid'],['slider','Horizontal slider'],['list','Compact list']
+        ]));
+        $inspector.append(choiceField('Category card style','category_card_style',s.category_card_style||'image',[
+          ['image','Image cards'],['elevated','Elevated cards'],['minimal','Minimal cards'],['circle','Circular categories']
+        ]));
+        $inspector.append(field('Show product count','show_category_count',s.show_category_count===true,'checkbox'));
+      }
       if(s.type==='product_grid'||s.type==='product_carousel'){
-        const sel=$('<div class="ark-field"><label>Products source</label><select data-field="source"><option value="latest">Latest products</option><option value="featured">Featured products</option><option value="sale">Sale products</option><option value="category">Choose category</option></select></div>');
+        const sel=$('<div class="ark-field"><label>Products source</label><select data-field="source"><option value="latest">Latest products</option><option value="featured">Featured products</option><option value="sale">Sale products</option><option value="top_rated">Top rated</option><option value="category">Choose category</option><option value="wishlist">Wishlist products</option></select></div>');
         sel.find('select').val(s.source||'latest').on('change',e=>{s.source=e.target.value;markDirty();});$inspector.append(sel);
       }
     }
     if(s.type==='product_grid'||s.type==='product_carousel'){
-      $inspector.append(field('Destination URL (optional)','destination_url',s.destination_url||'','url','When set, tapping product cards opens this destination instead of product detail.'));
-      const mode=$('<div class="ark-field"><label>Destination type</label><select><option value="chrome">Open in Chrome</option><option value="deeplink">Deep link</option><option value="in_app">In-app page</option></select></div>');mode.find('select').val(s.destination_link_type||'chrome').on('change',e=>{s.destination_link_type=e.target.value;markDirty();});$inspector.append(mode);
-      $inspector.append(field('Product card width (fraction)','card_width',s.card_width||.46,'number','Horizontal slider card width, e.g. 0.46.'));
-      $inspector.append(field('Grid card ratio','card_ratio',s.card_ratio||.66,'number','Grid aspect ratio, 0.45 to 1.2.'));
+      const tapAction=$('<div class="ark-field"><label>Tap action type</label><select><option value="product_detail">Open product details</option><option value="in_app">Open in-app destination</option><option value="deeplink">Open app deep link</option><option value="website">Open website</option></select></div>');
+      tapAction.find('select').val(s.tap_action_type||(s.destination_url?'in_app':'product_detail')).on('change',e=>{s.tap_action_type=e.target.value;s.destination_link_type=e.target.value==='website'?'chrome':e.target.value;markDirty();renderInspector();});
+      $inspector.append(tapAction);
+      if((s.tap_action_type||(s.destination_url?'in_app':'product_detail'))==='in_app'){
+        $inspector.append(inAppTargetField('In-app destination',s.destination_url||'page:home',value=>{s.destination_url=value;markDirty();},'Choose a Designer page, WooCommerce product or category.'));
+      }else{
+        $inspector.append(field('Destination URL / deep link','destination_url',s.destination_url||'','url','Used for website and app deep-link actions.'));
+      }
+      if(s.type==='product_carousel')$inspector.append(field('Product slider card width (fraction)','card_width',s.card_width||.46,'number','Horizontal slider card width, e.g. 0.46.'));
       const categorySelect=$('<div class="ark-field"><label>Category filter</label><select><option value="0">All categories</option></select></div>');
       (liveCache.categories||[]).forEach(cat=>categorySelect.find('select').append($('<option></option>').val(cat.id).text(cat.name)));
-      categorySelect.find('select').val(String(s.category_id||0)).on('change',e=>{s.category_id=Number(e.target.value);markDirty();});
+      categorySelect.find('select').val(String(s.category_id||0)).on('change',e=>{s.category_id=Number(e.target.value);if(s.source!=='category')s.source='category';markDirty();renderInspector();});
       $inspector.append(categorySelect);
     }
     if(['trust_badges','faq'].includes(s.type)){
