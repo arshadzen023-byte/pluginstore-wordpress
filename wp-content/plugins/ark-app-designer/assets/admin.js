@@ -74,7 +74,7 @@ jQuery(function($){
     }
     if(s.type==='search'){
       $('<div class="ark-real-search"></div>').text('⌕  '+(s.hints?.[0]||s.placeholder||'Search products…')).appendTo(card);
-    }else if(s.type==='ark_live_slider'){
+    }else if(s.type==='ark_live_slider'||String(s.type||'').startsWith('banner_')){
       const saved=liveCache.sliders[s.slider_key];
       if(!saved)loadLiveSlider(s);
       const slides=saved?.slides||[];
@@ -102,13 +102,18 @@ jQuery(function($){
         .appendTo(card);
     }else if(s.type==='image' && s.image_url){
       $('<img class="ark-preview-single-image" alt="">').attr('src',s.image_url).appendTo(card);
-    }else if(['product_grid','product_carousel','recently_viewed','category_grid','icon_grid'].includes(s.type)){
-      const grid=$('<div class="ark-preview-grid"></div>')
+    }else if(['product_grid','product_carousel','product_list','product_scroll','recently_viewed','category_grid','category_list','category_list_tile','category_scroll','category_slider','icon_grid'].includes(s.type)){
+      const isCategory=String(s.type||'').startsWith('category_')||s.type==='category_grid';
+      const layout=s.layout_variant||s.category_layout||(s.type==='product_carousel'?'slider':'grid');
+      const isSlider=s.type==='product_carousel'||s.type==='product_scroll'||layout==='slider'||layout==='scroll';
+      const liveItems=isCategory?(liveCache.categories||[]):(liveCache.products||[]);
+      const columns=Math.max(1,Math.min(4,Number(s.columns)||2));
+      const grid=$('<div></div>').addClass((layout==='list'||layout==='list_tile')?'ark-preview-layout-list':(isSlider?'ark-preview-layout-slider':'ark-preview-grid'))
         .attr('data-card-design',s.card_design||'flipkart')
-        .attr('data-card-animation',s.card_animation||'none');
-      const liveItems=s.type==='category_grid'?(liveCache.categories||[]):(liveCache.products||[]);
+        .attr('data-card-animation',s.card_animation||'none')
+        .css({'--ark-layout-columns':columns,'--ark-layout-gap':(Number(s.item_gap)||8)+'px'});
       if(liveItems.length){
-        liveItems.slice(0,Math.min(4,Number(s.limit||4))).forEach(item=>{
+        liveItems.slice(0,Math.min(6,Number(s.limit||6))).forEach(item=>{
           const tile=$('<div class="ark-preview-product ark-real-tile"></div>');
           const img=item.image||item.images?.[0]?.src||'';
           if(img)$('<img alt="">').attr('src',img).appendTo(tile);
@@ -117,8 +122,8 @@ jQuery(function($){
           grid.append(tile);
         });
       }else{
-        const count=Math.max(2,Math.min(4,Number(s.limit||4)));
-        for(let i=0;i<Math.min(count,4);i++)$('<div class="ark-preview-product"></div>').text(s.type==='category_grid'?'Loading live category…':'Loading live product…').appendTo(grid);
+        const count=Math.max(2,Math.min(6,Number(s.limit||4)));
+        for(let i=0;i<Math.min(count,6);i++)$('<div class="ark-preview-product"></div>').text(isCategory?'Loading live category…':'Loading live product…').appendTo(grid);
       }
       card.append(grid);
     }
@@ -1111,37 +1116,22 @@ jQuery(function($){
       $inspector.append(field('Button label','button_label',s.button_label||s.title||'Open'));
       $inspector.append(field('Button link','button_url',s.button_url||'','text'));
     }
-    if(['product_grid','product_carousel','recently_viewed','category_grid','icon_grid'].includes(s.type)){
+    if(['product_grid','product_carousel','product_list','product_scroll','recently_viewed','category_grid','category_list','category_list_tile','category_scroll','category_slider','icon_grid'].includes(s.type)){
       $inspector.append(field('Maximum items','limit',s.limit||8,'number'));
-      if(s.type==='product_grid'||s.type==='category_grid'||s.type==='icon_grid')$inspector.append(field('Columns','columns',s.columns||2,'number'));
-      if(s.type==='category_grid'){
-        $inspector.append(choiceField('Category layout','category_layout',s.category_layout||'grid',[
-          ['grid','Responsive grid'],['slider','Horizontal slider'],['list','Compact list']
+      if(['product_grid','category_grid','category_list','category_list_tile','category_scroll','category_slider','icon_grid'].includes(s.type))$inspector.append(field('Columns','columns',s.columns||2,'number'));
+      if(['category_grid','category_list','category_list_tile','category_scroll','category_slider'].includes(s.type)){
+        $inspector.append(choiceField('Category layout','category_layout',s.category_layout||s.layout_variant||'grid',[
+          ['grid','Responsive grid'],['slider','Horizontal slider'],['scroll','Horizontal scroll'],['list','Compact list'],['list_tile','List tile']
         ]));
         $inspector.append(choiceField('Category card style','category_card_style',s.category_card_style||'image',[
           ['image','Image cards'],['elevated','Elevated cards'],['minimal','Minimal cards'],['circle','Circular categories']
         ]));
         $inspector.append(field('Show product count','show_category_count',s.show_category_count===true,'checkbox'));
       }
-      if(s.type==='product_grid'||s.type==='product_carousel'){
+      if(['product_grid','product_carousel','product_list','product_scroll'].includes(s.type)){
         const sel=$('<div class="ark-field"><label>Products source</label><select data-field="source"><option value="latest">Latest products</option><option value="featured">Featured products</option><option value="sale">Sale products</option><option value="top_rated">Top rated</option><option value="category">Choose category</option><option value="wishlist">Wishlist products</option></select></div>');
         sel.find('select').val(s.source||'latest').on('change',e=>{s.source=e.target.value;markDirty();});$inspector.append(sel);
       }
-    }
-    if(s.type==='product_grid'||s.type==='product_carousel'){
-      const tapAction=$('<div class="ark-field"><label>Tap action type</label><select><option value="product_detail">Open product details</option><option value="in_app">Open in-app destination</option><option value="deeplink">Open app deep link</option><option value="website">Open website</option></select></div>');
-      tapAction.find('select').val(s.tap_action_type||(s.destination_url?'in_app':'product_detail')).on('change',e=>{s.tap_action_type=e.target.value;s.destination_link_type=e.target.value==='website'?'chrome':e.target.value;markDirty();renderInspector();});
-      $inspector.append(tapAction);
-      if((s.tap_action_type||(s.destination_url?'in_app':'product_detail'))==='in_app'){
-        $inspector.append(inAppTargetField('In-app destination',s.destination_url||'page:home',value=>{s.destination_url=value;markDirty();},'Choose a Designer page, WooCommerce product or category.'));
-      }else{
-        $inspector.append(field('Destination URL / deep link','destination_url',s.destination_url||'','url','Used for website and app deep-link actions.'));
-      }
-      if(s.type==='product_carousel')$inspector.append(field('Product slider card width (fraction)','card_width',s.card_width||.46,'number','Horizontal slider card width, e.g. 0.46.'));
-      const categorySelect=$('<div class="ark-field"><label>Category filter</label><select><option value="0">All categories</option></select></div>');
-      (liveCache.categories||[]).forEach(cat=>categorySelect.find('select').append($('<option></option>').val(cat.id).text(cat.name)));
-      categorySelect.find('select').val(String(s.category_id||0)).on('change',e=>{s.category_id=Number(e.target.value);if(s.source!=='category')s.source='category';markDirty();renderInspector();});
-      $inspector.append(categorySelect);
     }
     if(['trust_badges','faq'].includes(s.type)){
       if(!Array.isArray(s.items))s.items=[];
@@ -1174,8 +1164,87 @@ jQuery(function($){
         catch(e){toast('Icon links JSON is invalid.',true);}
       });
     }
-    if(s.type==='ark_live_slider')renderLiveSliderInspector(s);
+    if(s.type==='ark_live_slider'||String(s.type||'').startsWith('banner_'))renderLiveSliderInspector(s);
 
+    // Shared layout system for banner, category and product families.
+    if(['banner_grid','banner_list','banner_slider','banner_scroll','category_grid','category_list','category_list_tile','category_scroll','category_slider','product_grid','product_carousel','product_list','product_scroll'].includes(s.type) || (s.type==='ark_live_slider' && !liveCache.sliders[s.slider_key])){
+      const group=$('<div class="ark-layout-property-group"></div>');
+      $('<div class="ark-layout-property-title">LAYOUT · STYLE · SETTINGS</div>').appendTo(group);
+      $('<p class="description">These shared layout properties are saved in the same page config used by the native app renderer.</p>').appendTo(group);
+      group.append(field('Section title','title',s.title||''));
+      group.append(field('Background colour','section_background',s.section_background||'#FFFFFF','color'));
+      group.append(field('Content / text colour','text_color',s.text_color||'#202733','color'));
+      group.append(field('Section width (%)','width_pct',s.width_pct??100,'number'));
+      group.append(field('Fixed height (px, 0 = auto)','height_px',s.height_px??0,'number'));
+      group.append(field('Minimum height (px)','min_height_px',s.min_height_px??0,'number'));
+      group.append(field('Maximum width (px, 0 = full)','max_width_px',s.max_width_px??0,'number'));
+      group.append(choiceField('Horizontal alignment','alignment',s.alignment||'stretch',[
+        ['stretch','Full width'],['left','Left'],['center','Center'],['right','Right']
+      ]));
+      group.append(field('Padding top (px)','padding_top',s.padding_top??12,'number'));
+      group.append(field('Padding right (px)','padding_right',s.padding_right??12,'number'));
+      group.append(field('Padding bottom (px)','padding_bottom',s.padding_bottom??12,'number'));
+      group.append(field('Padding left (px)','padding_left',s.padding_left??12,'number'));
+      group.append(field('Margin top (px)','margin_top',s.margin_top??0,'number'));
+      group.append(field('Margin right (px)','margin_right',s.margin_right??0,'number'));
+      group.append(field('Margin bottom (px)','margin_bottom',s.margin_bottom??0,'number'));
+      group.append(field('Margin left (px)','margin_left',s.margin_left??0,'number'));
+      group.append(field('Card / image gap (px)','item_gap',s.item_gap??8,'number'));
+      group.append(field('Corner radius (px)','corner_radius',s.corner_radius??16,'number'));
+      group.append(field('Card background colour','card_background',s.card_background||'#FFFFFF','color'));
+      group.append(choiceField('Background animation','background_motion',s.background_motion||'none',[
+        ['none','None'],['pulse','Pulse'],['gradient','Gradient'],['shimmer','Shimmer'],['glow','Glow'],['fireworks','Fireworks']
+      ]));
+      if(String(s.type||'').startsWith('category_')||s.type==='category_grid'){
+        group.append(choiceField('Category layout','category_layout',s.category_layout||s.layout_variant||'grid',[
+          ['grid','Grid'],['slider','Horizontal slider'],['scroll','Horizontal scroll'],['list','List'],['list_tile','List tile']
+        ]));
+        group.append(choiceField('Category card style','category_card_style',s.category_card_style||'image',[
+          ['image','Image cards'],['elevated','Elevated'],['minimal','Minimal'],['circle','Circular']
+        ]));
+        group.append(field('Number of columns','columns',s.columns||4,'number'));
+        group.append(field('Show product count','show_category_count',s.show_category_count===true,'checkbox'));
+      }
+      if(['product_grid','product_carousel','product_list','product_scroll'].includes(s.type)){
+        group.append(choiceField('Product card design','card_design',s.card_design||'flipkart',[
+          ['flipkart','Flipkart'],['classic','Classic'],['elevated','Elevated'],['glass','Glass'],['compact','Compact'],['minimal','Minimal'],['3d','3D depth'],['3d_glass','3D glass']
+        ]));
+        group.append(choiceField('Card animation','card_animation',s.card_animation||'none',[
+          ['none','None'],['fade','Fade'],['scale','Scale'],['slide','Slide'],['pulse','Pulse'],['glow','Glow'],['tilt_3d','3D tilt']
+        ]));
+        group.append(field('3D depth','card_depth',s.card_depth??12,'number'));
+        group.append(field('Product card ratio','card_aspect_ratio',s.card_aspect_ratio??.66,'number'));
+        group.append(choiceField('Image fit','card_image_fit',s.card_image_fit||'contain',[
+          ['contain','Contain'],['cover','Cover']
+        ]));
+      }
+      if(s.type==='ark_live_slider'||String(s.type||'').startsWith('banner_')){
+        const variant=s.layout_variant||({banner_grid:'grid',banner_list:'list',banner_scroll:'scroll'}[s.type]||'slider');
+        group.append(choiceField('Banner layout','layout_variant',variant,[
+          ['grid','Banner Grid'],['list','Banner List'],['slider','Banner Slider'],['scroll','Banner Scroll']
+        ]));
+        group.append(field('Slider height (px)','height_px',s.height_px??178,'number'));
+        group.append(field('Autoplay interval (ms)','interval_ms',s.interval_ms??3500,'number'));
+        group.append(choiceField('Slide transition','transition',s.transition||'slide',[
+          ['slide','Slide'],['fade','Fade'],['zoom','Zoom']
+        ]));
+      }
+      const controls=$('<div class="ark-layout-settings-controls"></div>');
+      $('<button type="button">Hide / show</button>').on('click',()=>{
+        s.visible=s.visible===false?true:false;markDirty();render(); 
+      }).appendTo(controls);
+      $('<button type="button">Move up</button>').on('click',()=>{
+        const i=sections().findIndex(item=>item.id===s.id);if(i>0){[sections()[i-1],sections()[i]]=[sections()[i],sections()[i-1]];markDirty();render();}
+      }).appendTo(controls);
+      $('<button type="button">Move down</button>').on('click',()=>{
+        const i=sections().findIndex(item=>item.id===s.id);if(i>=0&&i<sections().length-1){[sections()[i+1],sections()[i]]=[sections()[i],sections()[i+1]];markDirty();render();}
+      }).appendTo(controls);
+      $('<button type="button" class="danger">Remove</button>').on('click',()=>{
+        page().sections=sections().filter(item=>item.id!==s.id);state.selected=null;markDirty();render();
+      }).appendTo(controls);
+      group.append(controls);
+      $inspector.prepend(group);
+    }
     $inspector.append(field('Visible in app','visible',s.visible!==false,'checkbox'));
   }
   function loadLivePreview(){
@@ -1188,17 +1257,197 @@ jQuery(function($){
     ]).then(([cats,products,targets])=>{liveCache.categories=Array.isArray(cats)?cats:[];liveCache.products=Array.isArray(products)?products:[];liveCache.targets=targets;renderPreview();if(state.selected)renderInspector();})
     .finally(()=>{liveCache.loading=false;});
   }
+  function layoutDockSelectPage(key){
+    if(!state.config.pages[key])return;
+    state.page=key;state.selected=null;state.view='page';render();
+  }
+  function layoutDockOpenView(view){
+    state.view=view;state.selected=null;renderInspector();renderPreview();
+  }
+  function layoutDockSelectFirst(type){
+    const item=sections().find(section=>section.type===type);
+    if(!item){toast('Add a '+(ARKDesigner.components[type]?.label||type)+' component first.',true);return false;}
+    state.selected=item.id;state.view='page';render();
+    const node=$preview.find('[data-id="'+item.id+'"]');
+    if(node.length)node[0].scrollIntoView({behavior:'smooth',block:'center'});
+    return true;
+  }
+  function layoutDockShowPanel(key){
+    const panel=$('#ark-layout-dock-panel');
+    panel.empty().prop('hidden',false);
+    const row=$('<div class="ark-layout-panel-row"></div>');
+    const note=(message)=>$('<p class="ark-layout-panel-note"></p>').text(message).appendTo(panel);
+    const action=(label,fn,primary=false)=>{
+      $('<button type="button"></button>').toggleClass('primary',primary).text(label).on('click',fn).appendTo(row);
+    };
+    if(key==='components'){
+      note('Choose a layout variant. Images come from WordPress Media Library / the existing SQL slider store; product and category cards load from WooCommerce.');
+      action('Banner Grid',()=>addComponent('banner_grid'),true);
+      action('Banner List',()=>addComponent('banner_list'));
+      action('Banner Slider',()=>addComponent('banner_slider'));
+      action('Banner Scroll',()=>addComponent('banner_scroll'));
+      action('Category Grid',()=>addComponent('category_grid'),true);
+      action('Category List',()=>addComponent('category_list'));
+      action('Category List Tile',()=>addComponent('category_list_tile'));
+      action('Category Scroll',()=>addComponent('category_scroll'));
+      action('Category Slider',()=>addComponent('category_slider'));
+      action('Product Grid',()=>addComponent('product_grid'),true);
+      action('Product List',()=>addComponent('product_list'));
+      action('Product Scroll',()=>addComponent('product_scroll'));
+      action('Product Slider',()=>addComponent('product_carousel'));
+      action('Open all components',()=>{layoutDockOpenView('page');$('#ark-component-search').trigger('focus');$('.ark-sidebar').get(0)?.scrollIntoView({behavior:'smooth',block:'start'});});
+      panel.append(row);
+      return;
+    }
+    if(key==='properties'){
+      if(!selected()){
+        const first=sections().find(section=>section.visible!==false);
+        if(first){state.selected=first.id;state.view='page';renderInspector();}
+        else note('Select a component on the phone preview, or add a component to this page.');
+      }else{
+        state.view='page';renderInspector();
+        note('Editing: '+(selected()?.title||selected()?.type||'component')+'. Changes update the phone preview immediately.');
+      }
+      action('Show properties',()=>{$('.ark-inspector').get(0)?.scrollIntoView({behavior:'smooth',block:'start'});},true);
+      panel.append(row);
+      return;
+    }
+    if(key==='reorder'){
+      note('Reorder components with the arrows below or drag the component title directly in the live phone preview.');
+      const list=$('<div class="ark-layout-reorder-list"></div>');
+      sections().forEach((item,index)=>{
+        const itemRow=$('<div class="ark-layout-reorder-item"></div>');
+        $('<strong></strong>').text((index+1)+'. '+(item.title||ARKDesigner.components[item.type]?.label||item.type)).appendTo(itemRow);
+        $('<button type="button">↑</button>').prop('disabled',index===0).on('click',()=>{[sections()[index-1],sections()[index]]=[sections()[index],sections()[index-1]];state.selected=item.id;markDirty();render();layoutDockShowPanel('reorder');}).appendTo(itemRow);
+        $('<button type="button">↓</button>').prop('disabled',index===sections().length-1).on('click',()=>{[sections()[index+1],sections()[index]]=[sections()[index],sections()[index+1]];state.selected=item.id;markDirty();render();layoutDockShowPanel('reorder');}).appendTo(itemRow);
+        list.append(itemRow);
+      });
+      if(!sections().length)list.append($('<div class="ark-layout-empty"></div>').text('This page has no components yet.'));
+      panel.append(list);
+      return;
+    }
+    if(key==='templates'){
+      note('My templates are stored in this browser for this administrator. Save a section or the full page, then insert it into the current page. Publishing the inserted template sends it to the same live app configuration.');
+      const templatesKey='arkDesignerMyTemplatesV1';
+      let templates=[];
+      try{templates=JSON.parse(window.localStorage.getItem(templatesKey)||'[]');if(!Array.isArray(templates))templates=[];}catch(_){templates=[];}
+      action('Save selected component',()=>{
+        const item=selected();if(!item){toast('Select a component first.',true);return;}
+        templates.push({id:'tpl-'+Date.now(),name:item.title||ARKDesigner.components[item.type]?.label||item.type,kind:'section',data:JSON.parse(JSON.stringify(item))});
+        window.localStorage.setItem(templatesKey,JSON.stringify(templates));toast('Component saved to My templates.');layoutDockShowPanel('templates');
+      },true);
+      action('Save whole page',()=>{
+        templates.push({id:'tpl-'+Date.now(),name:pageLabel(state.page)+' template',kind:'page',data:JSON.parse(JSON.stringify({title:page().title,sections:sections()}))});
+        window.localStorage.setItem(templatesKey,JSON.stringify(templates));toast('Page template saved.');layoutDockShowPanel('templates');
+      });
+      templates.forEach(template=>{
+        const templateRow=$('<div class="ark-layout-reorder-item"></div>');
+        $('<strong></strong>').text(template.name+' · '+template.kind).appendTo(templateRow);
+        $('<button type="button">Insert</button>').on('click',()=>{
+          if(template.kind==='section'){
+            const item=JSON.parse(JSON.stringify(template.data));item.id='section-'+Date.now();sections().push(item);state.selected=item.id;
+          }else{
+            const copied=JSON.parse(JSON.stringify(template.data.sections||[]));
+            copied.forEach((item,index)=>{item.id='section-'+Date.now()+'-'+index;});
+            page().sections=[...sections(),...copied];state.selected=copied[copied.length-1]?.id||null;
+          }
+          state.view='page';markDirty();render();toast('Template inserted. Save Draft or Publish to sync.');
+        }).appendTo(templateRow);
+        $('<button type="button">Delete</button>').on('click',()=>{
+          templates=templates.filter(item=>item.id!==template.id);window.localStorage.setItem(templatesKey,JSON.stringify(templates));layoutDockShowPanel('templates');
+        }).appendTo(templateRow);
+        panel.append(templateRow);
+      });
+      if(!templates.length)panel.append($('<div class="ark-layout-empty"></div>').text('No templates saved yet.'));
+      panel.append(row);
+      return;
+    }
+    if(key==='pages'){
+      note('Switch the live phone canvas to a page. Create a new page or open the existing page settings.');
+      allPageKeys().forEach(pageKey=>action(pageLabel(pageKey),()=>layoutDockSelectPage(pageKey),state.page===pageKey));
+      action('＋ New page',openAddPageDialog,true);
+      action('Page settings',()=>layoutDockOpenView('page_settings'));
+      panel.append(row);
+      return;
+    }
+    if(key==='slide_menu'){
+      const nav=state.config.navigation||(state.config.navigation={visible:true,items:[]});
+      if(!Array.isArray(nav.items))nav.items=[];
+      note('Create an item for the app slide menu. The item is stored in Navigation and uses the same destination picker as the bottom menu.');
+      action('＋ Add slide menu item',()=>{
+        nav.items.push({key:'drawer-'+Date.now(),label:'New menu',icon:'widgets',link_type:'in_app',target:'page:home',url:'page:home',animation:'fade',placement:'drawer'});
+        markDirty();layoutDockOpenView('navigation');layoutDockShowPanel('menu_edit');
+      },true);
+      action('Edit menu items',()=>layoutDockOpenView('navigation'));
+      panel.append(row);
+      return;
+    }
+    if(key==='menu_edit'||key==='navigation'){
+      note('Navigation item labels, icons, destinations, animation and four bar styles are edited in the shared Navigation properties. Save Draft, then Publish to sync to GlowHit.');
+      action('Open Navigation properties',()=>layoutDockOpenView('navigation'),true);
+      action('Add menu button',()=>{
+        const nav=state.config.navigation||(state.config.navigation={visible:true,items:[]});
+        if(!Array.isArray(nav.items))nav.items=[];
+        if(nav.items.length>=5){toast('The native bottom bar supports up to 5 items.',true);return;}
+        nav.items.push({key:'custom-'+Date.now(),label:'New menu',icon:'widgets',link_type:'in_app',target:'page:home',url:'page:home',animation:'fade'});
+        markDirty();layoutDockOpenView('navigation');
+      });
+      panel.append(row);
+      return;
+    }
+    if(key==='header'){
+      note('Edit the real Home Page Top Header. Header logo, title, background image, colour, actions and animation share the existing Designer configuration.');
+      action('Edit top header',()=>layoutDockOpenView('default_heading'),true);
+      action('Edit global app identity',()=>layoutDockOpenView('app'));
+      panel.append(row);
+      return;
+    }
+    if(key==='search'){
+      note('Open the Search page and select its Search component. Search placeholder, voice/camera actions and suggestions are editable in Properties.');
+      const searchPage=(page().sections||[]).find(item=>item.type==='search')|| (state.config.pages.search?.sections||[]).find(item=>item.type==='search');
+      action('Open Search page',()=>{layoutDockSelectPage('search');if(searchPage)layoutDockSelectFirst('search');},true);
+      action('Edit Search settings',()=>{layoutDockSelectPage('search');layoutDockSelectFirst('search');});
+      panel.append(row);
+      return;
+    }
+    if(key==='animations'){
+      note('Select a banner, category or product component to edit Background animation and Card animation. Header animation is edited under Top Header.');
+      const item=selected();
+      if(item){
+        action('Open selected component animation properties',()=>{state.view='page';renderInspector();$('.ark-inspector').get(0)?.scrollIntoView({behavior:'smooth',block:'start'});},true);
+      }else{
+        action('Select Product Slider',()=>layoutDockSelectFirst('product_carousel'));
+        action('Select Banner Slider',()=>layoutDockSelectFirst('ark_live_slider'));
+        action('Select Category Grid',()=>layoutDockSelectFirst('category_grid'));
+      }
+      panel.append(row);
+      return;
+    }
+    if(key==='account'){
+      action('Open Account page',()=>{layoutDockSelectPage('account');},true);
+      action('Edit Account menu',()=>{
+        layoutDockSelectPage('account');
+        const menu=sections().find(item=>item.type==='account_menu');
+        if(menu){state.selected=menu.id;state.view='page';render();}
+        else toast('Add an Account menu component to this page first.',true);
+      });
+      panel.append(row);
+      return;
+    }
+    panel.append(row);
+  }
   function render(){renderPages();renderPreview();renderInspector();$('#ark-canvas-title').text(pageLabel(state.page));}
   function addComponent(type){
     const id='section-'+Date.now();
     const defaults={id,type,visible:true,title:ARKDesigner.components[type]?.label||type};
-    if(['product_grid','product_carousel','recently_viewed','category_grid'].includes(type))Object.assign(defaults,{limit:8,columns:2,source:'latest',card_width:.46,card_ratio:.66});
-    if(type==='ark_live_slider')Object.assign(defaults,{slider_key:'slider-'+id,tap_link_type:'in_app'});
+    if(['product_grid','product_carousel','product_list','product_scroll','recently_viewed','category_grid','category_list','category_list_tile','category_scroll','category_slider'].includes(type))Object.assign(defaults,{limit:8,columns:2,source:'latest',card_width:.46,card_ratio:.66});
+    if(type==='ark_live_slider'||type.startsWith('banner_'))Object.assign(defaults,{slider_key:'slider-'+id,tap_link_type:'in_app',layout_variant:type==='banner_grid'?'grid':(type==='banner_list'?'list':(type==='banner_scroll'?'scroll':'slider'))});
     if(type==='heading')Object.assign(defaults,{show_icon:true,icon_name:'local_offer',show_title:true,text_alignment:'left',heading_animation:'none',heading_icon_animation:'none',visible_pages:[state.page],tap_link_type:'in_app'});
     if(type==='product_gallery')Object.assign(defaults,{gallery_height:390,gallery_fit:'contain',auto_slide:true,auto_slide_interval_ms:4200,show_dots:true,allow_zoom:true,show_wishlist:true,show_share:true,action_layout:'vertical',action_button_size:44,action_icon_size:21,action_gap:9,action_offset_top:14,action_offset_right:14,action_background:'#FFFFFF',action_icon_color:'#263248'});
     if(type==='product_recommended')Object.assign(defaults,{promo_autoplay:true,promo_interval_ms:4000,promo_card_height:112,promo_card_width:238,promo_image_size:72,show_ad_badge:true,ad_label:'AD',show_discount:true,show_original_price:true});
     if(type==='search')Object.assign(defaults,{placeholder:'Search products...',hints:['Search Watch','Search TV','Search Plugin'],hint_interval_ms:2200,open_search_page:true,show_voice_search:true,show_camera_search:true});
-    if(type==='product_grid'||type==='product_carousel')Object.assign(defaults,{link_type:'product',destination_url:'',category_id:0});
+    if(['product_grid','product_carousel','product_list','product_scroll'].includes(type))Object.assign(defaults,{link_type:'product',destination_url:'',category_id:0,layout_variant:type==='product_list'?'list':(type==='product_scroll'?'scroll':(type==='product_carousel'?'slider':'grid'))});
+    if(['category_grid','category_list','category_list_tile','category_scroll','category_slider'].includes(type))Object.assign(defaults,{layout_variant:type==='category_list'?'list':(type==='category_list_tile'?'list_tile':(type==='category_scroll'?'scroll':(type==='category_slider'?'slider':'grid')))});
     if(type==='address_selector')Object.assign(defaults,{title:'Delivery address',subtitle:'Choose where your order should arrive.',address_style:'flipkart',show_edit:true,show_phone:true,show_city_pin:true,allow_address_switch:true,compact_on_mobile:false});
     if(type==='account_menu')Object.assign(defaults,{items:[{title:'My Orders',subtitle:'Track and view purchases',icon:'receipt',action:'orders'},{title:'My Downloads',subtitle:'Your purchased files',icon:'download',action:'downloads'},{title:'Edit Address',subtitle:'Manage delivery address',icon:'location',action:'address'},{title:'Edit Account Details',subtitle:'Update your profile',icon:'person',action:'profile'},{title:'Sign Out',subtitle:'Sign out of this device',icon:'logout',action:'logout'}]});
     sections().push(defaults);state.selected=id;state.view='page';markDirty();render();
@@ -1292,7 +1541,27 @@ jQuery(function($){
   $('#ark-save-draft').on('click',()=>save(false));
   $('#ark-publish').on('click',()=>save(true));
   $('#ark-preview-refresh').on('click',renderPreview);
+  $('#ark-layout-dock').on('click','[data-layout-tab]',function(){
+    const key=String($(this).data('layout-tab')||'');
+    $('.ark-layout-tab').removeClass('active');
+    $(this).addClass('active');
+    layoutDockShowPanel(key);
+    if(key==='components')$('.ark-sidebar').get(0)?.scrollIntoView({behavior:'smooth',block:'start'});
+    if(key==='properties')$('.ark-inspector').get(0)?.scrollIntoView({behavior:'smooth',block:'start'});
+    if(key==='pages')renderPages();
+  });
   $('#ark-version-label').text('Published v'+(state.config.version||1)+' · Draft editor');
+  // Restore the original visual component alias in the editor after the
+  // server has normalized it to the native renderer component type.
+  // Published app JSON still receives the normalized base type + layout_variant.
+  Object.values(state.config.pages||{}).forEach(pageData=>{
+    if(!pageData||!Array.isArray(pageData.sections))return;
+    pageData.sections.forEach(section=>{
+      if(section?.designer_component_type && ARKDesigner.components?.[section.designer_component_type]){
+        section.type=section.designer_component_type;
+      }
+    });
+  });
   let removedLegacyHeadings=0;
   Object.values(state.config.pages||{}).forEach(pageData=>{
     if(!pageData||!Array.isArray(pageData.sections))return;
