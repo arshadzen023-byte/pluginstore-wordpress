@@ -51,7 +51,7 @@ $checks = [
     'Config migration fills missing defaults without replacing saved arrays' => strpos($source, 'merge_config_defaults') !== false && strpos($source, 'ark_app_designer_config_schema') !== false,
     'Admin assets use file modification cache-busters' => strpos($source, 'filemtime($js_path)') !== false && strpos($source, 'filemtime($css_path)') !== false,
     'Default Heading Bar has native animation controls' => strpos($js, "Heading bar animation") !== false && strpos($source, "'animation' => 'none'") !== false,
-    'Default Heading animation and background effects are validated and persisted' => strpos($source, "['none','pulse','gradient','slide','shimmer','float']") !== false && strpos($source, "['none','glass','blur','shimmer','glow','gradient']") !== false,
+    'Default Heading animation and background effects are validated and persisted' => strpos($source, "['none','pulse','gradient','slide','shimmer','float']") !== false && strpos($source, "['none','glass','blur','shimmer','glow','gradient','fireworks']") !== false && strpos($source, "\$value['background_effect'] = in_array") !== false,
     'Per-page icon visibility survives publish sanitization' => strpos($source, "'icon_visibility' => is_array") !== false,
     'Media Library background image attachment IDs are persisted and restored' => strpos($source, 'background_image_id') !== false && strpos($source, 'wp_get_attachment_url($image_id)') !== false,
     'Draft editor selects the newest saved Draft or Published config' => strpos($source, 'current_editor_config()') !== false && strpos($source, '$draft_at >= $published_at') !== false,
