@@ -392,7 +392,9 @@ final class ARK_App_Designer {
             'updated_at' => current_time('mysql', true),
         ];
 
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION') === false) {
+            return new WP_Error('ark_slider_transaction', 'Slider database transaction could not be started.', ['status' => 500]);
+        }
         $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$sliders} WHERE slider_key = %s", $slider_key));
         if ($exists) {
             $saved = $wpdb->update($sliders, $row, ['slider_key' => $slider_key]);
@@ -405,9 +407,17 @@ final class ARK_App_Designer {
             return new WP_Error('ark_slider_save', 'Slider settings could not be saved.', ['status' => 500]);
         }
 
-        $wpdb->delete($items, ['slider_key' => $slider_key], ['%s']);
+        $deleted = $wpdb->delete($items, ['slider_key' => $slider_key], ['%s']);
+        if ($deleted === false) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('ark_slider_delete', 'Existing slider images could not be replaced safely.', ['status' => 500]);
+        }
+        $saved_count = 0;
         foreach (array_values($slides) as $index => $slide) {
-            if (!is_array($slide)) continue;
+            if (!is_array($slide)) {
+                $wpdb->query('ROLLBACK');
+                return new WP_Error('ark_slider_invalid_slide', 'A selected banner image has invalid data. No slider changes were saved.', ['status' => 400]);
+            }
             $attachment_id = absint($slide['attachment_id'] ?? 0);
             $image_url = '';
             $srcset = '';
@@ -417,7 +427,14 @@ final class ARK_App_Designer {
             } else {
                 $image_url = $this->clean_url($slide['image_url'] ?? '');
             }
-            if (!$image_url) continue;
+            if (!$image_url) {
+                $wpdb->query('ROLLBACK');
+                return new WP_Error(
+                    'ark_slider_missing_image',
+                    sprintf('Banner image %d has no valid WordPress attachment or image URL. No slider changes were saved.', $index + 1),
+                    ['status' => 400]
+                );
+            }
             [$link_type, $link_value] = $this->normalize_slider_link(
                 $slide['link_type'] ?? 'in_app',
                 $slide['link_value'] ?? $slide['link'] ?? ''
@@ -447,11 +464,19 @@ final class ARK_App_Designer {
             ]);
             if ($inserted === false) {
                 $wpdb->query('ROLLBACK');
-                return new WP_Error('ark_slider_save', 'A slider image could not be saved.', ['status' => 500]);
+                return new WP_Error('ark_slider_save', 'A slider image could not be saved. No slider changes were committed.', ['status' => 500]);
             }
+            $saved_count++;
         }
-        $wpdb->query('COMMIT');
-        return ['slider_key' => $slider_key, 'saved_slides' => count($slides)];
+        if ($saved_count !== count($slides)) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('ark_slider_count_mismatch', 'Not all selected banner images were saved. No slider changes were committed.', ['status' => 500]);
+        }
+        if ($wpdb->query('COMMIT') === false) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('ark_slider_commit', 'Slider changes could not be committed to the database.', ['status' => 500]);
+        }
+        return ['slider_key' => $slider_key, 'saved_slides' => $saved_count];
     }
 
     private function get_live_slider_payload($slider_key, $public = false) {
