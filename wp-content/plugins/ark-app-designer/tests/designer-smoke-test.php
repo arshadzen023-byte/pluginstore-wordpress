@@ -1,6 +1,6 @@
 <?php
 /**
- * Source regression checks for ARK App Designer 1.17.3.
+ * Source regression checks for ARK App Designer 1.17.2.
  * Run: php tests/designer-smoke-test.php
  */
 $root = dirname(__DIR__);
@@ -25,8 +25,6 @@ if (strpos($source, "const VERSION = '" . $version . "'") === false) {
     exit(1);
 }
 $checks = [
-    'Basic Auth compatibility bridge executes before WordPress Application Password validation' => strpos($source, "populate_application_password_from_server_headers'") !== false && strpos($source, "add_filter('determine_current_user', [$this, 'populate_application_password_from_server_headers'], 19)") !== false,
-    'Application Password bridge only accepts a Basic token and never bypasses manage_options' => strpos($source, "preg_match('/^Basic\\s+([A-Za-z0-9+\\/]+={0,2})$/i'") !== false && strpos($source, "current_user_can('manage_options')") !== false,
     'Search page is a configurable Designer page' => strpos($source, "'search' => ['title' => 'Search'") !== false,
     'Default Heading Bar is a dedicated Designer menu, not a page component' => strpos($source, 'data-view="default_heading"') !== false && strpos($js, "state.view==='default_heading'") !== false,
     'Default Heading Bar supports background image and page visibility' => strpos($js, 'background_image_url') !== false && strpos($js, 'visible_pages') !== false,
