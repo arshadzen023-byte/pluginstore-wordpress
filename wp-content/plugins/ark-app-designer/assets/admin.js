@@ -78,23 +78,34 @@ jQuery(function($){
       const saved=liveCache.sliders[s.slider_key];
       if(!saved)loadLiveSlider(s);
       const slides=saved?.slides||[];
-      const rail=$('<div class="ark-preview-slider-rail ark-live-slider-preview"></div>')
-        .css({height:(Number(saved?.settings?.height_px)||178)+'px',gap:'8px'});
+      const settings=saved?.settings||{};
+      const variant=s.layout_variant||({banner_grid:'grid',banner_list:'list',banner_scroll:'scroll'}[s.type]||'slider');
+      const rail=$('<div class="ark-preview-slider-rail ark-live-slider-preview"></div>');
+      const height=Math.max(80,Number(settings.height_px)||Number(s.height_px)||178);
+      const radius=Math.max(0,Number(settings.radius??s.corner_radius)||16);
+      const fit=settings.image_fit||'cover';
+      if(variant==='grid'){
+        rail.css({display:'grid',gridTemplateColumns:'repeat('+Math.max(1,Math.min(4,Number(s.columns)||2))+',minmax(0,1fr))',gap:(Number(s.item_gap)||Number(settings.slide_gap)||8)+'px'});
+      }else if(variant==='list'){
+        rail.css({display:'flex',flexDirection:'column',gap:(Number(s.item_gap)||Number(settings.slide_gap)||8)+'px'});
+      }else if(variant==='scroll'){
+        rail.css({display:'flex',flexDirection:'row',overflowX:'auto',gap:(Number(s.item_gap)||Number(settings.slide_gap)||8)+'px'});
+      }else{
+        rail.css({display:'flex',flexDirection:'row',overflow:'hidden',height:height+'px',gap:(Number(settings.slide_gap)||8)+'px'});
+      }
       if(slides.length){
-        slides.slice(0,4).forEach(slide=>{
-          const frame=$('<div class="ark-preview-real-banner"></div>').css({
-            height:'100%',
-            flex:'0 0 '+(Math.max(.45,Math.min(1,Number(saved.settings.card_width)||1))*100)+'%',
-            borderRadius:(Number(saved.settings.radius)||16)+'px'
-          });
-          $('<img alt="">').attr('src',slide.image_url).css({
-            width:'100%',height:'100%',objectFit:saved.settings.image_fit||'cover'
-          }).appendTo(frame);
+        slides.slice(0,12).forEach(slide=>{
+          const frame=$('<div class="ark-preview-real-banner"></div>');
+          const imageHeight=variant==='grid'?Math.max(80,Number(s.height_px)||Math.round(height*.72)):variant==='list'?Math.max(80,Number(s.height_px)||120):height;
+          frame.css({position:'relative',overflow:'hidden',borderRadius:radius+'px',minWidth:variant==='scroll'?'72%':0,height:imageHeight+'px',flex:variant==='slider'?'0 0 '+(Math.max(.45,Math.min(1,Number(settings.card_width)||1))*100)+'%':'0 0 auto'});
+          if(variant==='grid')frame.css({minWidth:0,width:'100%'});
+          if(variant==='list')frame.css({width:'100%'});
+          $('<img alt="">').attr('src',slide.image_url).css({display:'block',width:'100%',height:'100%',objectFit:fit}).appendTo(frame);
           if(slide.title)$('<span class="ark-preview-slide-title"></span>').text(slide.title).appendTo(frame);
           rail.append(frame);
         });
       }else{
-        $('<div class="ark-live-slider-empty"></div>').text('Add images in SQL-backed Slider Properties').appendTo(rail);
+        $('<div class="ark-live-slider-empty"></div>').text('Add images in Children · SQL Slider Properties').css({minHeight:height+'px',display:'grid',placeItems:'center'}).appendTo(rail);
       }
       card.append(rail);
       $('<small class="ark-live-slider-status"></small>')
@@ -533,7 +544,7 @@ jQuery(function($){
     $inspector.append(sliderSettingField(slider,'Corner radius (px)','radius','number'));
     const wrap=$('<div class="ark-slide-editor ark-live-slide-list"></div>');
     const head=$('<div class="ark-slide-editor-head"></div>');
-    $('<b></b>').text('SQL SAVED SLIDES').appendTo(head);
+    $('<b></b>').text('CHILDREN · SQL SAVED SLIDES').appendTo(head);
     $('<span></span>').text(slider.slides.length+' slides').appendTo(head);
     wrap.append(head);
     slider.slides.forEach((slide,index)=>{
@@ -1201,7 +1212,7 @@ jQuery(function($){
     if(s.type==='ark_live_slider'||String(s.type||'').startsWith('banner_'))renderLiveSliderInspector(s);
 
     // Shared layout properties are grouped by purpose for easier editing.
-    if(['banner_grid','banner_list','banner_slider','banner_scroll','category_grid','category_list','category_list_tile','category_scroll','category_slider','product_grid','product_carousel','product_list','product_scroll'].includes(s.type) || (s.type==='ark_live_slider' && !liveCache.sliders[s.slider_key])){
+    if(['ark_live_slider','banner_grid','banner_list','banner_slider','banner_scroll','category_grid','category_list','category_list_tile','category_scroll','category_slider','product_grid','product_carousel','product_list','product_scroll'].includes(s.type)){
       const group=$('<div class="ark-layout-property-group"></div>');
       $('<p class="description">Changes are saved to the native app configuration when you publish.</p>').appendTo(group);
       const addGroup=label=>{
