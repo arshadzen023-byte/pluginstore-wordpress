@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Designer
  * Description: Server-driven visual app designer for ARK Native / GlowHit Flutter apps, including live layout, navigation, theme and in-app splash configuration.
- * Version: 1.17.3
+ * Version: 1.17.4
  * Author: ARK
  * Requires PHP: 7.4
  */
@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class ARK_App_Designer {
-    const VERSION = '1.17.3';
+    const VERSION = '1.17.4';
     const PUBLISHED = 'ark_app_designer_published';
     const DRAFT = 'ark_app_designer_draft';
     const REVISIONS = 'ark_app_designer_revisions';
@@ -535,6 +535,7 @@ final class ARK_App_Designer {
     }
 
     private function migrate_legacy_banner_sliders() {
+        $banner_layouts = ['grid','list','slider','scroll'];
         foreach ([self::PUBLISHED, self::DRAFT] as $option) {
             $config = get_option($option, []);
             if (!is_array($config) || !is_array($config['pages'] ?? null)) continue;
@@ -542,18 +543,47 @@ final class ARK_App_Designer {
             foreach ($config['pages'] as $page_key => &$page) {
                 if (!is_array($page) || !is_array($page['sections'] ?? null)) continue;
                 foreach ($page['sections'] as &$section) {
-                    if (!is_array($section) || !in_array(($section['type'] ?? ''), ['banner_slider','banner_grid','banner_list','banner_scroll'], true)) continue;
+                    if (!is_array($section)) continue;
+                    $original_type = sanitize_key($section['type'] ?? '');
+                    $raw_variant = sanitize_key($section['layout_variant'] ?? $section['banner_layout'] ?? '');
+                    $legacy_image_banner = $original_type === 'image' && in_array($raw_variant, $banner_layouts, true);
+                    $legacy_banner_type = in_array($original_type, ['banner_slider','banner_grid','banner_list','banner_scroll'], true);
+                    if (!$legacy_image_banner && !$legacy_banner_type) continue;
+
+                    $variant = $legacy_image_banner
+                        ? $raw_variant
+                        : (['banner_grid'=>'grid','banner_list'=>'list','banner_scroll'=>'scroll','banner_slider'=>'slider'][$original_type] ?? 'slider');
                     $slider_key = sanitize_key($section['slider_key'] ?? $section['id'] ?? ('legacy-' . $page_key));
+                    if ($slider_key === '') $slider_key = sanitize_key('legacy-' . $page_key . '-' . wp_generate_uuid4());
+
+                    // Preserve the original Designer component identity and every layout property.
+                    $section['designer_component_type'] = $section['designer_component_type'] ?? $original_type;
+                    $section['layout_variant'] = $variant;
+                    $section['slider_key'] = $slider_key;
+
                     if ($option === self::PUBLISHED) {
-                        // Convert legacy Designer Children/media objects to the
-                        // attachment_id + image_url shape used by the SQL slider store.
+                        // Media can have been stored as Children, items, slides, images or image_url.
                         $legacy_slides = $section['children'] ?? $section['items'] ?? $section['slides'] ?? $section['images'] ?? [];
-                        $legacy_slides = is_array($legacy_slides) ? $legacy_slides : [];
+                        if (!is_array($legacy_slides)) $legacy_slides = [];
+                        if (!$legacy_slides && !empty($section['image_url'])) {
+                            $legacy_slides = [[
+                                'attachment_id' => absint($section['image_id'] ?? 0),
+                                'image_url' => $section['image_url'],
+                                'title' => $section['title'] ?? '',
+                                'alt_text' => $section['alt_text'] ?? '',
+                                'link_type' => $section['button_link_type'] ?? 'in_app',
+                                'link_value' => $section['button_url'] ?? '',
+                            ]];
+                        }
                         $legacy_slides = array_values(array_filter(array_map(function($child) {
+                            if (is_string($child)) $child = ['image_url' => $child];
                             if (!is_array($child)) return null;
                             $attachment_id = absint($child['attachment_id'] ?? $child['media_id'] ?? $child['id'] ?? 0);
                             $image_url = $child['image_url'] ?? $child['url'] ?? $child['src'] ?? $child['image'] ?? '';
                             if (is_array($image_url)) $image_url = $image_url['url'] ?? $image_url['src'] ?? '';
+                            if ($attachment_id > 0 && wp_attachment_is_image($attachment_id)) {
+                                $image_url = wp_get_attachment_image_url($attachment_id, 'large') ?: wp_get_attachment_url($attachment_id);
+                            }
                             return [
                                 'attachment_id' => $attachment_id,
                                 'image_url' => esc_url_raw((string) $image_url),
@@ -572,23 +602,27 @@ final class ARK_App_Designer {
                         }));
                         $legacy_settings = [
                             'title' => $section['title'] ?? 'Live Slider',
-                            'height_px' => $section['height'] ?? 178,
+                            'height_px' => $section['height_px'] ?? $section['height'] ?? 178,
                             'interval_ms' => $section['interval_ms'] ?? 3500,
                             'autoplay' => $section['autoplay'] ?? true,
-                            'loop_slides' => true,
-                            'transition' => 'slide',
-                            'image_fit' => $section['fit'] ?? 'cover',
+                            'loop_slides' => $section['loop_slides'] ?? true,
+                            'transition' => $section['transition'] ?? 'slide',
+                            'image_fit' => $section['image_fit'] ?? $section['fit'] ?? 'cover',
+                            'card_width' => $section['card_width'] ?? 1,
+                            'slide_gap' => $section['slide_gap'] ?? $section['item_gap'] ?? 8,
                             'show_arrows' => $section['show_arrows'] ?? false,
-                            'pagination' => !empty($section['show_dots']) ? 'dots' : 'none',
+                            'pagination' => $section['pagination'] ?? (!empty($section['show_dots']) ? 'dots' : 'none'),
+                            'pause_on_interaction' => $section['pause_on_interaction'] ?? true,
+                            'radius' => $section['radius'] ?? $section['corner_radius'] ?? 16,
                         ];
-                        // Do not wipe a valid SQL slider when an older config has no Children.
+                        // An empty legacy Children list must never delete existing SQL campaigns.
                         if (!empty($legacy_slides)) {
-                            $this->save_live_slider_payload($slider_key, $legacy_settings, $legacy_slides);
+                            $saved = $this->save_live_slider_payload($slider_key, $legacy_settings, $legacy_slides);
+                            if (is_wp_error($saved)) continue;
                         }
                     }
                     $section['type'] = 'ark_live_slider';
-                    $section['slider_key'] = $slider_key;
-                    unset($section['items'], $section['slides'], $section['images'], $section['image_url'], $section['button_url']);
+                    unset($section['items'], $section['slides'], $section['images'], $section['children'], $section['banner_layout']);
                     $changed = true;
                 }
                 unset($section);
@@ -665,6 +699,11 @@ final class ARK_App_Designer {
             'callback' => function() { return rest_ensure_response(self::component_catalog()); },
             'permission_callback' => [$this, 'can_design'],
         ]);
+        register_rest_route(self::REST_NAMESPACE, '/studio/media', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [$this, 'api_studio_media'],
+            'permission_callback' => [$this, 'can_design'],
+        ]);
         register_rest_route(self::REST_NAMESPACE, '/studio/targets', [
             'methods' => WP_REST_Server::READABLE,
             'callback' => [$this, 'api_studio_targets'],
@@ -708,6 +747,46 @@ final class ARK_App_Designer {
     }
 
     /** Return real native page and WooCommerce product destinations for slider links. */
+    /** Paginated image-only Media Library endpoint for the native Designer. */
+    public function api_studio_media($request) {
+        $page = max(1, absint($request->get_param('page') ?: 1));
+        $per_page = min(60, max(1, absint($request->get_param('per_page') ?: 30)));
+        $search = sanitize_text_field((string) $request->get_param('search'));
+        $query = new WP_Query([
+            'post_type' => 'attachment',
+            'post_status' => 'inherit',
+            'post_mime_type' => 'image',
+            'posts_per_page' => $per_page,
+            'paged' => $page,
+            's' => $search,
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'no_found_rows' => false,
+        ]);
+        $items = [];
+        foreach ($query->posts as $attachment) {
+            $id = (int) $attachment->ID;
+            $source = wp_get_attachment_url($id);
+            if (!$source) continue;
+            $thumb = wp_get_attachment_image_url($id, 'medium');
+            $items[] = [
+                'id' => $id,
+                'source_url' => esc_url_raw($source),
+                'thumbnail_url' => esc_url_raw($thumb ?: $source),
+                'title' => sanitize_text_field(get_the_title($id)),
+                'alt_text' => sanitize_text_field(get_post_meta($id, '_wp_attachment_image_alt', true)),
+                'mime_type' => get_post_mime_type($id),
+            ];
+        }
+        return rest_ensure_response([
+            'items' => $items,
+            'page' => $page,
+            'per_page' => $per_page,
+            'total' => (int) $query->found_posts,
+            'total_pages' => (int) $query->max_num_pages,
+        ]);
+    }
+
     public function api_studio_targets($request) {
         $products = [];
         $categories = [];
