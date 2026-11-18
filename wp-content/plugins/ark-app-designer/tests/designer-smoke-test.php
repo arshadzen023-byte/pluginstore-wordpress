@@ -38,6 +38,8 @@ $checks = [
     'slide items SQL table exists' => strpos($source, 'ark_live_slider_items') !== false,
     'database migration uses dbDelta' => strpos($source, 'dbDelta(') !== false,
     'legacy slider data migration exists' => strpos($source, 'migrate_legacy_banner_sliders') !== false,
+    'all banner layout variants migrate Media Library children to SQL slides' => strpos($source, "['banner_slider','banner_grid','banner_list','banner_scroll']") !== false && strpos($source, "$"."section['children'] ?? []") !== false,
+    'banner migration does not discard child image data before SQL persistence' => strpos($source, "$"."legacy_slides = $"."section['items'] ?? $"."section['slides'] ?? $"."section['images'] ?? $"."section['children'] ?? []") !== false,
     'unsaved legacy slides are copied to SQL before removing inline items' => strpos($source, '$this->save_live_slider_payload($slider_key, $legacy_settings, $slides)') !== false,
     'public app slider endpoint exists' => strpos($source, '/sliders/(?P<slider_key>') !== false,
     'authenticated studio slider endpoint exists' => strpos($source, '/studio/sliders/(?P<slider_key>') !== false,
