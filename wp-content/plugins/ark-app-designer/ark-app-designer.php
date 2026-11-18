@@ -379,6 +379,24 @@ final class ARK_App_Designer {
             return new WP_Error('ark_slider_limit', 'Maximum 40 images per slider.', ['status' => 400]);
         }
 
+        // Validate every selected image before deleting existing SQL rows.
+        // A stale Media Library attachment must never turn a valid slider into an empty one.
+        foreach ($slides as $slide_index => $slide) {
+            if (!is_array($slide)) {
+                return new WP_Error('ark_slider_image_invalid', 'Slide ' . ($slide_index + 1) . ' has invalid image data.', ['status' => 400]);
+            }
+            $attachment_id = absint($slide['attachment_id'] ?? 0);
+            $image_url = '';
+            if ($attachment_id > 0 && wp_attachment_is_image($attachment_id)) {
+                $image_url = wp_get_attachment_image_url($attachment_id, 'large') ?: wp_get_attachment_url($attachment_id);
+            } else {
+                $image_url = $this->clean_url($slide['image_url'] ?? '');
+            }
+            if (!$image_url) {
+                return new WP_Error('ark_slider_image_invalid', 'Slide ' . ($slide_index + 1) . ' has no valid image. Existing saved images were kept.', ['status' => 400]);
+            }
+        }
+
         $defaults = $this->live_slider_defaults();
         $row = [
             'title' => sanitize_text_field($settings['title'] ?? 'Live Slider'),
@@ -412,8 +430,8 @@ final class ARK_App_Designer {
         }
 
         $wpdb->delete($items, ['slider_key' => $slider_key], ['%s']);
+        $saved_slide_count = 0;
         foreach (array_values($slides) as $index => $slide) {
-            if (!is_array($slide)) continue;
             $attachment_id = absint($slide['attachment_id'] ?? 0);
             $image_url = '';
             $srcset = '';
@@ -423,7 +441,10 @@ final class ARK_App_Designer {
             } else {
                 $image_url = $this->clean_url($slide['image_url'] ?? '');
             }
-            if (!$image_url) continue;
+            if (!$image_url) {
+                $wpdb->query('ROLLBACK');
+                return new WP_Error('ark_slider_image_invalid', 'A selected image became unavailable during save. Existing saved images were restored.', ['status' => 500]);
+            }
             [$link_type, $link_value] = $this->normalize_slider_link(
                 $slide['link_type'] ?? 'in_app',
                 $slide['link_value'] ?? $slide['link'] ?? ''
@@ -455,9 +476,10 @@ final class ARK_App_Designer {
                 $wpdb->query('ROLLBACK');
                 return new WP_Error('ark_slider_save', 'A slider image could not be saved.', ['status' => 500]);
             }
+            $saved_slide_count++;
         }
         $wpdb->query('COMMIT');
-        return ['slider_key' => $slider_key, 'saved_slides' => count($slides)];
+        return ['slider_key' => $slider_key, 'saved_slides' => $saved_slide_count];
     }
 
     private function get_live_slider_payload($slider_key, $public = false) {
