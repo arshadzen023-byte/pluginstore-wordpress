@@ -470,8 +470,10 @@ jQuery(function($){
       if(selected()?.id===section.id)renderInspector();
       return liveCache.sliders[key];
     }).catch(error=>{
-      toast('Slider data could not load.',true);
-      throw error;
+      liveCache.sliders[key]={slider_key:key,settings:{},slides:[],load_error:true,dirty:false};
+      if(selected()?.id===section.id)renderInspector();
+      renderPreview();
+      return liveCache.sliders[key];
     }).finally(()=>{delete liveCache.sliderPending[key];});
     liveCache.sliderPending[key]=pending;
     return pending;
@@ -1219,10 +1221,17 @@ jQuery(function($){
         catch(e){toast('Icon links JSON is invalid.',true);}
       });
     }
-    if(s.type==='ark_live_slider'||String(s.type||'').startsWith('banner_'))renderLiveSliderInspector(s);
+    const isLegacyImageBanner=s.type==='image' && ['grid','list','slider','scroll'].includes(String(s.banner_layout||s.layout_variant||''));
+    if(s.type==='ark_live_slider'||String(s.type||'').startsWith('banner_')||isLegacyImageBanner){
+      if(isLegacyImageBanner){
+        s.slider_key=s.slider_key||('slider-'+String(s.id||Date.now())).toLowerCase().replace(/[^a-z0-9_-]/g,'-').slice(0,64);
+        s.layout_variant=s.banner_layout||s.layout_variant;
+      }
+      renderLiveSliderInspector(s);
+    }
 
     // Shared layout properties are grouped by purpose for easier editing.
-    if(['ark_live_slider','banner_grid','banner_list','banner_slider','banner_scroll','category_grid','category_list','category_list_tile','category_scroll','category_slider','product_grid','product_carousel','product_list','product_scroll'].includes(s.type)){
+    if(['image','ark_live_slider','banner_grid','banner_list','banner_slider','banner_scroll','category_grid','category_list','category_list_tile','category_scroll','category_slider','product_grid','product_carousel','product_list','product_scroll'].includes(s.type)){
       const group=$('<div class="ark-layout-property-group"></div>');
       $('<p class="description">Changes are saved to the native app configuration when you publish.</p>').appendTo(group);
       const addGroup=label=>{
@@ -1277,7 +1286,7 @@ jQuery(function($){
         ]));
         settings.append(field('Number of products','limit',s.limit??8,'number'));
       }
-      if(s.type==='ark_live_slider'||String(s.type||'').startsWith('banner_')){
+      if(s.type==='ark_live_slider'||String(s.type||'').startsWith('banner_')|| (s.type==='image' && ['grid','list','slider','scroll'].includes(String(s.banner_layout||s.layout_variant||'')))){
         const variant=s.layout_variant||({banner_grid:'grid',banner_list:'list',banner_scroll:'scroll'}[s.type]||'slider');
         settings.append(choiceField('Banner layout','layout_variant',variant,[
           ['grid','Banner Grid'],['list','Banner List'],['slider','Banner Slider'],['scroll','Banner Scroll']
