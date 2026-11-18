@@ -170,3 +170,10 @@ The authenticated studio endpoint is `/wp-json/ark-designer/v1/studio/sliders/{s
 ## 1.8.1 — Product card layout and 3D controls
 
 Product grid, product carousel and recently viewed components now save and render product card design, card animation, 3D depth, corner radius, image aspect ratio and image fit. The 3D styles include interactive tilt, elevated depth and a glass finish. The selected options are retained in the published native configuration.
+
+
+## Version 1.17.3 — Product media and banner child migration
+
+- Studio targets now return WooCommerce product featured/gallery image URLs and prices for native product-layout previews.
+- Studio category targets now return the WooCommerce category thumbnail URL.
+- Legacy Banner Slider children are migrated into the SQL slider payload during normalization, so selected child images are not dropped.
