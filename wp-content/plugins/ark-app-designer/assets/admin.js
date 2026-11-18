@@ -1273,6 +1273,9 @@ jQuery(function($){
           ['grid','Banner Grid'],['list','Banner List'],['slider','Banner Slider'],['scroll','Banner Scroll']
         ]));
       }
+      if((s.type==='ark_live_slider'||String(s.type||'').startsWith('banner_')) && (s.layout_variant||({banner_grid:'grid'}[s.type]||'slider'))==='grid'){
+        settings.append(field('Grid columns','columns',s.columns??2,'number','Choose 1–4 columns for Banner Grid.'));
+      }
 
       const style=addGroup('6. STYLE & ANIMATION');
       style.append(choiceField('Entrance animation','entrance_animation',s.entrance_animation||'none',[
