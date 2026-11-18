@@ -514,10 +514,10 @@ final class ARK_App_Designer {
             foreach ($config['pages'] as $page_key => &$page) {
                 if (!is_array($page) || !is_array($page['sections'] ?? null)) continue;
                 foreach ($page['sections'] as &$section) {
-                    if (!is_array($section) || ($section['type'] ?? '') !== 'banner_slider') continue;
+                    if (!is_array($section) || !in_array(($section['type'] ?? ''), ['banner_slider','banner_grid','banner_list','banner_scroll'], true)) continue;
                     $slider_key = sanitize_key($section['slider_key'] ?? $section['id'] ?? ('legacy-' . $page_key));
                     if ($option === self::PUBLISHED) {
-                        $legacy_slides = $section['items'] ?? $section['slides'] ?? $section['images'] ?? [];
+                        $legacy_slides = $section['items'] ?? $section['slides'] ?? $section['images'] ?? $section['children'] ?? [];
                         $legacy_settings = [
                             'title' => $section['title'] ?? 'Live Slider',
                             'height_px' => $section['height'] ?? 178,
@@ -932,7 +932,10 @@ final class ARK_App_Designer {
                 if (!is_array($section)) continue;
                 $type = sanitize_key($section['type'] ?? '');
                 $designer_component_type = $type;
-                $legacy_banner_slider = $type === 'banner_slider' && (!empty($section['items']) || !empty($section['slides']) || !empty($section['images']));
+                // All banner layout variants use the same SQL-backed slide store.
+                // The Designer's current image picker writes selected media to children.
+                $legacy_banner_slider = in_array($type, ['banner_slider','banner_grid','banner_list','banner_scroll'], true)
+                    && (!empty($section['items']) || !empty($section['slides']) || !empty($section['images']) || !empty($section['children']));
                 $layout_aliases = [
                     'banner_grid' => ['ark_live_slider','grid'],
                     'banner_list' => ['ark_live_slider','list'],
