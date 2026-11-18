@@ -789,6 +789,54 @@ final class ARK_App_Designer {
         return $clean;
     }
 
+    /**
+     * Preserve nested child media as canonical WordPress attachment URLs.
+     * Child images are part of the published app configuration, not temporary
+     * editor-only state. Reject invalid URLs rather than silently stripping them.
+     */
+    private function sanitize_component_children($children, $depth = 0) {
+        if ($depth > 3 || !is_array($children)) {
+            return new WP_Error('ark_designer_children_invalid', 'Component children have an invalid structure.', ['status' => 400]);
+        }
+        $clean = [];
+        foreach (array_slice($children, 0, 100) as $child) {
+            if (!is_array($child)) continue;
+            $item = $this->clean_value($child, 0);
+            if (!is_array($item)) continue;
+
+            $attachment_id = absint($child['attachment_id'] ?? $child['image_attachment_id'] ?? 0);
+            $attachment_url = $attachment_id > 0 ? wp_get_attachment_url($attachment_id) : '';
+            $raw_image_url = trim((string) ($child['image_url'] ?? ''));
+            $image_url = $this->clean_url($attachment_url ?: $raw_image_url);
+            if ($raw_image_url !== '' && $image_url === '') {
+                return new WP_Error(
+                    'ark_designer_child_image_invalid',
+                    'A child image URL is invalid. No design changes were saved.',
+                    ['status' => 400]
+                );
+            }
+            $item['image_url'] = $image_url;
+            if ($attachment_id > 0) $item['attachment_id'] = $attachment_id;
+
+            $link_type = in_array(($child['link_type'] ?? 'in_app'), ['in_app','deeplink','chrome'], true)
+                ? ($child['link_type'] ?? 'in_app') : 'in_app';
+            $item['link_type'] = $link_type;
+            $link_value = (string) ($child['link_value'] ?? '');
+            $item['link_value'] = $link_type === 'chrome'
+                ? $this->clean_url($link_value)
+                : sanitize_text_field($link_value);
+            $item['title'] = sanitize_text_field($child['title'] ?? '');
+
+            if (isset($child['children']) && is_array($child['children'])) {
+                $nested = $this->sanitize_component_children($child['children'], $depth + 1);
+                if (is_wp_error($nested)) return $nested;
+                $item['children'] = $nested;
+            }
+            $clean[] = $item;
+        }
+        return $clean;
+    }
+
     private function sanitize_heading_settings($raw, $defaults, $allowed_pages = []) {
         $value = is_array($raw) ? self::merge_config_defaults($defaults, $raw) : $defaults;
         foreach (['background_color','title_color','icon_color','button_background','button_text_color'] as $key) {
@@ -994,6 +1042,11 @@ final class ARK_App_Designer {
                 $item['visible'] = !array_key_exists('visible', $section) || (bool) $section['visible'];
                 if (isset($section['image_url'])) $item['image_url'] = $this->clean_url($section['image_url']);
                 if (isset($section['background_image_url'])) $item['background_image_url'] = $this->clean_url($section['background_image_url']);
+                if (isset($section['children']) && is_array($section['children'])) {
+                    $safe_children = $this->sanitize_component_children($section['children']);
+                    if (is_wp_error($safe_children)) return $safe_children;
+                    $item['children'] = $safe_children;
+                }
                 if (isset($section['visible_pages']) && is_array($section['visible_pages'])) $item['visible_pages'] = array_values(array_intersect($allowed_page_keys, array_map('sanitize_key', $section['visible_pages'])));
                 $item['show_icon'] = !array_key_exists('show_icon', $section) || (bool) $section['show_icon'];
                 $item['show_title'] = !array_key_exists('show_title', $section) || (bool) $section['show_title'];
