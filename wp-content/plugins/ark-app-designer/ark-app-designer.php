@@ -392,7 +392,9 @@ final class ARK_App_Designer {
             'updated_at' => current_time('mysql', true),
         ];
 
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION') === false) {
+            return new WP_Error('ark_slider_transaction', 'Slider database transaction could not be started.', ['status' => 500]);
+        }
         $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$sliders} WHERE slider_key = %s", $slider_key));
         if ($exists) {
             $saved = $wpdb->update($sliders, $row, ['slider_key' => $slider_key]);
@@ -405,9 +407,17 @@ final class ARK_App_Designer {
             return new WP_Error('ark_slider_save', 'Slider settings could not be saved.', ['status' => 500]);
         }
 
-        $wpdb->delete($items, ['slider_key' => $slider_key], ['%s']);
+        $deleted = $wpdb->delete($items, ['slider_key' => $slider_key], ['%s']);
+        if ($deleted === false) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('ark_slider_delete', 'Existing slider images could not be replaced safely.', ['status' => 500]);
+        }
+        $saved_count = 0;
         foreach (array_values($slides) as $index => $slide) {
-            if (!is_array($slide)) continue;
+            if (!is_array($slide)) {
+                $wpdb->query('ROLLBACK');
+                return new WP_Error('ark_slider_invalid_slide', 'A selected banner image has invalid data. No slider changes were saved.', ['status' => 400]);
+            }
             $attachment_id = absint($slide['attachment_id'] ?? 0);
             $image_url = '';
             $srcset = '';
@@ -417,7 +427,14 @@ final class ARK_App_Designer {
             } else {
                 $image_url = $this->clean_url($slide['image_url'] ?? '');
             }
-            if (!$image_url) continue;
+            if (!$image_url) {
+                $wpdb->query('ROLLBACK');
+                return new WP_Error(
+                    'ark_slider_missing_image',
+                    sprintf('Banner image %d has no valid WordPress attachment or image URL. No slider changes were saved.', $index + 1),
+                    ['status' => 400]
+                );
+            }
             [$link_type, $link_value] = $this->normalize_slider_link(
                 $slide['link_type'] ?? 'in_app',
                 $slide['link_value'] ?? $slide['link'] ?? ''
@@ -447,11 +464,19 @@ final class ARK_App_Designer {
             ]);
             if ($inserted === false) {
                 $wpdb->query('ROLLBACK');
-                return new WP_Error('ark_slider_save', 'A slider image could not be saved.', ['status' => 500]);
+                return new WP_Error('ark_slider_save', 'A slider image could not be saved. No slider changes were committed.', ['status' => 500]);
             }
+            $saved_count++;
         }
-        $wpdb->query('COMMIT');
-        return ['slider_key' => $slider_key, 'saved_slides' => count($slides)];
+        if ($saved_count !== count($slides)) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('ark_slider_count_mismatch', 'Not all selected banner images were saved. No slider changes were committed.', ['status' => 500]);
+        }
+        if ($wpdb->query('COMMIT') === false) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('ark_slider_commit', 'Slider changes could not be committed to the database.', ['status' => 500]);
+        }
+        return ['slider_key' => $slider_key, 'saved_slides' => $saved_count];
     }
 
     private function get_live_slider_payload($slider_key, $public = false) {
@@ -764,6 +789,60 @@ final class ARK_App_Designer {
         return $clean;
     }
 
+    /**
+     * Preserve nested child media as canonical WordPress attachment URLs.
+     * Child images are part of the published app configuration, not temporary
+     * editor-only state. Reject invalid URLs rather than silently stripping them.
+     */
+    private function sanitize_component_children($children, $depth = 0) {
+        if ($depth > 3 || !is_array($children)) {
+            return new WP_Error('ark_designer_children_invalid', 'Component children have an invalid structure.', ['status' => 400]);
+        }
+        $clean = [];
+        foreach (array_slice($children, 0, 100) as $child) {
+            if (!is_array($child)) continue;
+            $item = $this->clean_value($child, 0);
+            if (!is_array($item)) continue;
+
+            $item['id'] = sanitize_key($child['id'] ?? wp_generate_uuid4());
+            $raw_image = $child['image'] ?? null;
+            $image_data = is_array($raw_image) ? $raw_image : [];
+            $attachment_id = absint($child['attachment_id'] ?? $child['image_attachment_id'] ?? $child['image_id'] ?? ($image_data['id'] ?? 0));
+            $attachment_url = $attachment_id > 0 ? wp_get_attachment_url($attachment_id) : '';
+            $raw_image_value = is_array($raw_image)
+                ? ($raw_image['url'] ?? $raw_image['src'] ?? $raw_image['source_url'] ?? $raw_image['thumbnail'] ?? '')
+                : $raw_image;
+            $raw_image_url = trim((string) ($child['image_url'] ?? $child['src'] ?? $child['url'] ?? $raw_image_value ?? ''));
+            $image_url = $this->clean_url($attachment_url ?: $raw_image_url);
+            if (($raw_image_url !== '' || $attachment_id > 0) && $image_url === '') {
+                return new WP_Error(
+                    'ark_designer_child_image_invalid',
+                    'A child image URL is invalid. No design changes were saved.',
+                    ['status' => 400]
+                );
+            }
+            $item['image_url'] = $image_url;
+            if ($attachment_id > 0) $item['attachment_id'] = $attachment_id;
+
+            $link_type = in_array(($child['link_type'] ?? 'in_app'), ['in_app','deeplink','chrome'], true)
+                ? ($child['link_type'] ?? 'in_app') : 'in_app';
+            $item['link_type'] = $link_type;
+            $link_value = (string) ($child['link_value'] ?? '');
+            $item['link_value'] = $link_type === 'chrome'
+                ? $this->clean_url($link_value)
+                : sanitize_text_field($link_value);
+            $item['title'] = sanitize_text_field($child['title'] ?? '');
+
+            if (isset($child['children']) && is_array($child['children'])) {
+                $nested = $this->sanitize_component_children($child['children'], $depth + 1);
+                if (is_wp_error($nested)) return $nested;
+                $item['children'] = $nested;
+            }
+            $clean[] = $item;
+        }
+        return $clean;
+    }
+
     private function sanitize_heading_settings($raw, $defaults, $allowed_pages = []) {
         $value = is_array($raw) ? self::merge_config_defaults($defaults, $raw) : $defaults;
         foreach (['background_color','title_color','icon_color','button_background','button_text_color'] as $key) {
@@ -932,7 +1011,10 @@ final class ARK_App_Designer {
                 if (!is_array($section)) continue;
                 $type = sanitize_key($section['type'] ?? '');
                 $designer_component_type = $type;
-                $legacy_banner_slider = $type === 'banner_slider' && (!empty($section['items']) || !empty($section['slides']) || !empty($section['images']));
+                $legacy_banner_slider = $type === 'banner_slider' && (
+                    !empty($section['items']) || !empty($section['slides']) ||
+                    !empty($section['images']) || !empty($section['children'])
+                );
                 $layout_aliases = [
                     'banner_grid' => ['ark_live_slider','grid'],
                     'banner_list' => ['ark_live_slider','list'],
@@ -969,6 +1051,11 @@ final class ARK_App_Designer {
                 $item['visible'] = !array_key_exists('visible', $section) || (bool) $section['visible'];
                 if (isset($section['image_url'])) $item['image_url'] = $this->clean_url($section['image_url']);
                 if (isset($section['background_image_url'])) $item['background_image_url'] = $this->clean_url($section['background_image_url']);
+                if (isset($section['children']) && is_array($section['children'])) {
+                    $safe_children = $this->sanitize_component_children($section['children']);
+                    if (is_wp_error($safe_children)) return $safe_children;
+                    $item['children'] = $safe_children;
+                }
                 if (isset($section['visible_pages']) && is_array($section['visible_pages'])) $item['visible_pages'] = array_values(array_intersect($allowed_page_keys, array_map('sanitize_key', $section['visible_pages'])));
                 $item['show_icon'] = !array_key_exists('show_icon', $section) || (bool) $section['show_icon'];
                 $item['show_title'] = !array_key_exists('show_title', $section) || (bool) $section['show_title'];
@@ -984,8 +1071,27 @@ final class ARK_App_Designer {
                     $slider_key = sanitize_key($section['slider_key'] ?? $section['id'] ?? wp_generate_uuid4());
                     $item['slider_key'] = $slider_key;
                     if ($legacy_banner_slider) {
-                        $slides = $section['items'] ?? $section['slides'] ?? $section['images'] ?? $section['children'] ?? [];
+                        $slides = [];
+                        // Prefer the first populated slide collection. An empty legacy
+                        // items array must not mask images selected in the Children editor.
+                        foreach (['items', 'slides', 'images', 'children'] as $slide_source) {
+                            if (isset($section[$slide_source]) && is_array($section[$slide_source]) && !empty($section[$slide_source])) {
+                                $slides = $section[$slide_source];
+                                break;
+                            }
+                        }
                         if (!is_array($slides)) $slides = [];
+                        foreach ($slides as &$slide) {
+                            if (!is_array($slide)) continue;
+                            $image_data = is_array($slide['image'] ?? null) ? $slide['image'] : [];
+                            if (empty($slide['attachment_id'])) {
+                                $slide['attachment_id'] = absint($slide['image_attachment_id'] ?? $slide['image_id'] ?? ($image_data['id'] ?? 0));
+                            }
+                            if (empty($slide['image_url'])) {
+                                $slide['image_url'] = $slide['src'] ?? $slide['url'] ?? ($image_data['url'] ?? $image_data['src'] ?? $image_data['source_url'] ?? $image_data['thumbnail'] ?? (is_string($slide['image'] ?? null) ? $slide['image'] : ''));
+                            }
+                        }
+                        unset($slide);
                         $is_list = ($slides === []) || (array_keys($slides) === range(0, count($slides) - 1));
                         if (!$is_list && (isset($slides['image_url']) || isset($slides['image']) || isset($slides['src']) || isset($slides['url']) || isset($slides['attachment_id']))) {
                             $slides = [$slides];

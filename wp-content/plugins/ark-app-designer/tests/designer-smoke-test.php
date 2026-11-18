@@ -104,6 +104,9 @@ $checks = [
     'In-app links normalize legacy page keys and use full native destination pages' => strpos($flutter, 'nativePageKeys') !== false && strpos($flutter, "case 'wishlist':") !== false && strpos($flutter, "case 'account':") !== false && strpos($flutter, "case 'categories':") !== false && strpos($flutter, 'HomeScreen(initialTab: 1)') !== false && strpos($flutter, 'HomeScreen(initialTab: 2)') !== false && strpos($flutter, 'HomeScreen(initialTab: 3)') !== false && strpos($flutter, "lowerTarget.startsWith('page:')") !== false,
     'Legacy entrance animation aliases are accepted and mapped before rendering' => strpos($source, "'fade_in' => 'fade'") !== false && strpos($flutter, "'slide_up': 'slide'") !== false,
     'Standalone native page shell synchronizes Designer header and system status bar' => strpos($shell, 'statusBarColor: header') !== false && strpos($shell, 'heading[\'background_color\']') !== false && strpos($shell, 'SizedBox.expand(child: child)') !== false,
+    'Legacy Banner Slider treats selected Children images as a migration payload' => strpos($source, "!empty($section['children'])") !== false && strpos($source, "foreach (['items', 'slides', 'images', 'children'] as $slide_source)") !== false,
+    'Children Media Library selections resolve attachment IDs and nested image URLs' => strpos($source, "(\$image_data['id'] ?? 0)") !== false && strpos($source, "\$image_data['url']") !== false,
+    'Native live slider falls back to SQL slides when inline child media is unusable' => strpos($flutter, '_normalizeSlides(widget.section[\'children\'])') !== false && strpos($flutter, 'return _normalizeSlides(_payload?[\'slides\']);') !== false,
 
 ];
 $failed = [];
