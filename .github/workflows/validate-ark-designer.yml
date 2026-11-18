@@ -47,6 +47,7 @@ jobs:
           zip -r ../../dist/ark-native-app-builder-0.2.0.zip ark-native-app-builder
           zip -r ../../dist/ark-woo-product-promo-slider-1.1.2.zip ark-woo-product-promo-slider
       - name: Publish installable ZIP downloads
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
