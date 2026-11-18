@@ -610,7 +610,12 @@ jQuery(function($){
     $('<button type="button" class="ark-btn ark-btn-publish ark-slider-save">Save slider to SQL</button>').on('click',function(){
       const button=$(this).prop('disabled',true).text('Saving images…');
       request(sliderApiPath(key),'POST',{settings:slider.settings,slides:slider.slides})
-        .then(result=>{slider.dirty=false;toast('Slider saved · '+result.saved_slides+' slides stored.');return loadLiveSlider(section,true);})
+        .then(result=>{
+          const expected=slider.slides.filter(slide=>slide&&String(slide.image_url||'').trim()).length;
+          const saved=Number(result.saved_slides||0);
+          if(saved!==expected)throw new Error('Image save verification failed: selected '+expected+', SQL saved '+saved+'. Your previous saved slider was protected.');
+          slider.dirty=false;toast('Slider saved · '+saved+' images verified in SQL.');return loadLiveSlider(section,true);
+        })
         .catch(error=>toast(error.message||'Slider save failed.',true))
         .finally(()=>button.prop('disabled',false).text('Save slider to SQL'));
     }).appendTo(wrap);
@@ -618,7 +623,12 @@ jQuery(function($){
   }
   function saveDirtyLiveSliders(){
     return Promise.all(Object.entries(liveCache.sliders).filter(([,slider])=>slider?.dirty).map(([key,slider])=>
-      request(sliderApiPath(key),'POST',{settings:slider.settings,slides:slider.slides}).then(()=>{slider.dirty=false;})
+      request(sliderApiPath(key),'POST',{settings:slider.settings,slides:slider.slides}).then(result=>{
+        const expected=slider.slides.filter(slide=>slide&&String(slide.image_url||'').trim()).length;
+        const saved=Number(result.saved_slides||0);
+        if(saved!==expected)throw new Error('Banner '+key+' image verification failed: selected '+expected+', SQL saved '+saved+'. Publish was stopped to protect your previous images.');
+        slider.dirty=false;
+      })
     ));
   }
   const sourceState={files:[],path:'',sha:'',branch:'',tokenSaved:false};
