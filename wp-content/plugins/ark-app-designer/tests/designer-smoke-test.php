@@ -91,7 +91,6 @@ if ($failed) {
     exit(1);
 }
 echo "ARK App Designer " . $version . " regression checks passed (" . count($checks) . ")." . PHP_EOL;
- . 'legacy_slides))') !== false,
     'schema upgrade re-runs safe migration for existing 1.17.x installations' =>
         strpos($source, '$live_slider_schema < 2') !== false &&
         strpos($source, "update_option('ark_app_designer_live_slider_schema', 2") !== false,
