@@ -283,10 +283,16 @@ final class ARK_App_Designer {
     }
 
     public function maybe_upgrade_schema() {
-        if (absint(get_option('ark_app_designer_live_slider_schema', 0)) < 1) {
+        $live_slider_schema = absint(get_option('ark_app_designer_live_slider_schema', 0));
+        if ($live_slider_schema < 1) {
             self::create_live_slider_tables();
             $this->migrate_legacy_banner_sliders();
             update_option('ark_app_designer_live_slider_schema', 1, false);
+        } elseif ($live_slider_schema < 2) {
+            // Re-run the safe Children-media migration for existing 1.17.x installs.
+            self::create_live_slider_tables();
+            $this->migrate_legacy_banner_sliders();
+            update_option('ark_app_designer_live_slider_schema', 2, false);
         }
 
         // Upgrade existing Draft and Published documents without resetting any
@@ -517,7 +523,31 @@ final class ARK_App_Designer {
                     if (!is_array($section) || !in_array(($section['type'] ?? ''), ['banner_slider','banner_grid','banner_list','banner_scroll'], true)) continue;
                     $slider_key = sanitize_key($section['slider_key'] ?? $section['id'] ?? ('legacy-' . $page_key));
                     if ($option === self::PUBLISHED) {
-                        $legacy_slides = $section['items'] ?? $section['slides'] ?? $section['images'] ?? $section['children'] ?? [];
+                        // Convert legacy Designer Children/media objects to the
+                        // attachment_id + image_url shape used by the SQL slider store.
+                        $legacy_slides = $section['children'] ?? $section['items'] ?? $section['slides'] ?? $section['images'] ?? [];
+                        $legacy_slides = is_array($legacy_slides) ? $legacy_slides : [];
+                        $legacy_slides = array_values(array_filter(array_map(function($child) {
+                            if (!is_array($child)) return null;
+                            $attachment_id = absint($child['attachment_id'] ?? $child['media_id'] ?? $child['id'] ?? 0);
+                            $image_url = $child['image_url'] ?? $child['url'] ?? $child['src'] ?? $child['image'] ?? '';
+                            if (is_array($image_url)) $image_url = $image_url['url'] ?? $image_url['src'] ?? '';
+                            return [
+                                'attachment_id' => $attachment_id,
+                                'image_url' => esc_url_raw((string) $image_url),
+                                'title' => sanitize_text_field($child['title'] ?? ''),
+                                'subtitle' => sanitize_textarea_field($child['subtitle'] ?? ''),
+                                'alt_text' => sanitize_text_field($child['alt_text'] ?? $child['alt'] ?? ''),
+                                'button_label' => sanitize_text_field($child['button_label'] ?? ''),
+                                'link_type' => $child['link_type'] ?? 'in_app',
+                                'link_value' => $child['link_value'] ?? $child['link'] ?? '',
+                                'active' => !array_key_exists('active', $child) || !empty($child['active']),
+                                'starts_at' => $child['starts_at'] ?? '',
+                                'ends_at' => $child['ends_at'] ?? '',
+                            ];
+                        }, $legacy_slides), function($slide) {
+                            return is_array($slide) && ($slide['attachment_id'] > 0 || $slide['image_url'] !== '');
+                        }));
                         $legacy_settings = [
                             'title' => $section['title'] ?? 'Live Slider',
                             'height_px' => $section['height'] ?? 178,
@@ -529,7 +559,10 @@ final class ARK_App_Designer {
                             'show_arrows' => $section['show_arrows'] ?? false,
                             'pagination' => !empty($section['show_dots']) ? 'dots' : 'none',
                         ];
-                        $this->save_live_slider_payload($slider_key, $legacy_settings, is_array($legacy_slides) ? $legacy_slides : []);
+                        // Do not wipe a valid SQL slider when an older config has no Children.
+                        if (!empty($legacy_slides)) {
+                            $this->save_live_slider_payload($slider_key, $legacy_settings, $legacy_slides);
+                        }
                     }
                     $section['type'] = 'ark_live_slider';
                     $section['slider_key'] = $slider_key;
