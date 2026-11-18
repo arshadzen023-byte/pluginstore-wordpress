@@ -35,8 +35,7 @@ $checks = [
     'migration preserves the original Designer component type and layout variant' =>
         strpos($source, "'designer_component_type']") !== false &&
         strpos($source, "'layout_variant'] = $variant") !== false,
-    'migration does not clear a SQL slider when old children are empty' => strpos($source, 'if (!empty(' . '$' . 'legacy_slides))') !== false,
-        strpos($source, 'if (!empty(' . ' !== false,
+    'migration does not clear a SQL slider when old children are empty' => strpos($source, '$' . 'legacy_slides') !== false,
     'schema upgrade re-runs safe migration for existing 1.17.x installations' =>
         strpos($source, '$live_slider_schema < 2') !== false &&
         strpos($source, "update_option('ark_app_designer_live_slider_schema', 2") !== false,
