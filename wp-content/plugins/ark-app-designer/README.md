@@ -1,10 +1,15 @@
 # ARK App Designer WordPress Plugin
 
-**Plugin:** ARK App Designer 1.17.2  
+**Plugin:** ARK App Designer 1.17.3  
 **GlowHit app engine:** 1.0.41 (build 41)  
 **Companion app:** ARK Studio 1.0.0
 
 ARK App Designer controls supported Flutter app layouts and splash configuration from WordPress. Install it as a separate plugin next to WooCommerce and the ARK App Push Notifications plugin.
+
+## 1.17.3 Application Password compatibility fix
+- Adds a safe WordPress Application Password header bridge for CGI/FastCGI and proxy configurations that expose a Basic Authorization header through `HTTP_AUTHORIZATION`, `REDIRECT_HTTP_AUTHORIZATION`, `HTTP_X_AUTHORIZATION`, `getallheaders()`, or a Basic-form `REMOTE_USER`.
+- The bridge runs before WordPress core Application Password validation and only fills the standard `PHP_AUTH_USER` / `PHP_AUTH_PW` server values. It never logs credentials and does not bypass WordPress authentication or the `manage_options` capability check.
+- If the web server strips the Authorization header completely before PHP receives it, hosting-level forwarding (Apache `.htaccess` / server config) is still required.
 
 ## 1.17.2 Native page routing, theme and animation fixes
 - Opens Categories, Wishlist and Account in the full native app page shell when selected from an in-app component link, including page heading, back navigation, background, status bar and navigation bar styling.
@@ -23,7 +28,7 @@ ARK App Designer controls supported Flutter app layouts and splash configuration
 - Native section and gallery keys keep image/slider state stable while scrolling; image requests use the cached image layer.
 
 ## Install
-1. Download the `ark-app-designer` folder as a ZIP, or use the GitHub Actions artifact `ark-app-designer-1.17.2`.
+1. Download the `ark-app-designer` folder as a ZIP, or use the GitHub Actions artifact for the matching plugin release.
 2. WordPress Admin → Plugins → Add Plugin → Upload Plugin.
 3. Upload and activate **ARK App Designer**.
 4. Open **ARK App Designer** in the WordPress admin menu.
