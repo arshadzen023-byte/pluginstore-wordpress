@@ -78,23 +78,34 @@ jQuery(function($){
       const saved=liveCache.sliders[s.slider_key];
       if(!saved)loadLiveSlider(s);
       const slides=saved?.slides||[];
-      const rail=$('<div class="ark-preview-slider-rail ark-live-slider-preview"></div>')
-        .css({height:(Number(saved?.settings?.height_px)||178)+'px',gap:'8px'});
+      const settings=saved?.settings||{};
+      const variant=s.layout_variant||({banner_grid:'grid',banner_list:'list',banner_scroll:'scroll'}[s.type]||'slider');
+      const rail=$('<div class="ark-preview-slider-rail ark-live-slider-preview"></div>');
+      const height=Math.max(80,Number(settings.height_px)||Number(s.height_px)||178);
+      const radius=Math.max(0,Number(settings.radius??s.corner_radius)||16);
+      const fit=settings.image_fit||'cover';
+      if(variant==='grid'){
+        rail.css({display:'grid',gridTemplateColumns:'repeat('+Math.max(1,Math.min(4,Number(s.columns)||2))+',minmax(0,1fr))',gap:(Number(s.item_gap)||Number(settings.slide_gap)||8)+'px'});
+      }else if(variant==='list'){
+        rail.css({display:'flex',flexDirection:'column',gap:(Number(s.item_gap)||Number(settings.slide_gap)||8)+'px'});
+      }else if(variant==='scroll'){
+        rail.css({display:'flex',flexDirection:'row',overflowX:'auto',gap:(Number(s.item_gap)||Number(settings.slide_gap)||8)+'px'});
+      }else{
+        rail.css({display:'flex',flexDirection:'row',overflow:'hidden',height:height+'px',gap:(Number(settings.slide_gap)||8)+'px'});
+      }
       if(slides.length){
-        slides.slice(0,4).forEach(slide=>{
-          const frame=$('<div class="ark-preview-real-banner"></div>').css({
-            height:'100%',
-            flex:'0 0 '+(Math.max(.45,Math.min(1,Number(saved.settings.card_width)||1))*100)+'%',
-            borderRadius:(Number(saved.settings.radius)||16)+'px'
-          });
-          $('<img alt="">').attr('src',slide.image_url).css({
-            width:'100%',height:'100%',objectFit:saved.settings.image_fit||'cover'
-          }).appendTo(frame);
+        slides.slice(0,12).forEach(slide=>{
+          const frame=$('<div class="ark-preview-real-banner"></div>');
+          const imageHeight=variant==='grid'?Math.max(80,Number(s.height_px)||Math.round(height*.72)):variant==='list'?Math.max(80,Number(s.height_px)||120):height;
+          frame.css({position:'relative',overflow:'hidden',borderRadius:radius+'px',minWidth:variant==='scroll'?'72%':0,height:imageHeight+'px',flex:variant==='slider'?'0 0 '+(Math.max(.45,Math.min(1,Number(settings.card_width)||1))*100)+'%':'0 0 auto'});
+          if(variant==='grid')frame.css({minWidth:0,width:'100%'});
+          if(variant==='list')frame.css({width:'100%'});
+          $('<img alt="">').attr('src',slide.image_url).css({display:'block',width:'100%',height:'100%',objectFit:fit}).appendTo(frame);
           if(slide.title)$('<span class="ark-preview-slide-title"></span>').text(slide.title).appendTo(frame);
           rail.append(frame);
         });
       }else{
-        $('<div class="ark-live-slider-empty"></div>').text('Add images in SQL-backed Slider Properties').appendTo(rail);
+        $('<div class="ark-live-slider-empty"></div>').text('Add images in Children · SQL Slider Properties').css({minHeight:height+'px',display:'grid',placeItems:'center'}).appendTo(rail);
       }
       card.append(rail);
       $('<small class="ark-live-slider-status"></small>')
@@ -459,8 +470,10 @@ jQuery(function($){
       if(selected()?.id===section.id)renderInspector();
       return liveCache.sliders[key];
     }).catch(error=>{
-      toast('Slider data could not load.',true);
-      throw error;
+      liveCache.sliders[key]={slider_key:key,settings:{},slides:[],load_error:true,dirty:false};
+      if(selected()?.id===section.id)renderInspector();
+      renderPreview();
+      return liveCache.sliders[key];
     }).finally(()=>{delete liveCache.sliderPending[key];});
     liveCache.sliderPending[key]=pending;
     return pending;
@@ -533,7 +546,7 @@ jQuery(function($){
     $inspector.append(sliderSettingField(slider,'Corner radius (px)','radius','number'));
     const wrap=$('<div class="ark-slide-editor ark-live-slide-list"></div>');
     const head=$('<div class="ark-slide-editor-head"></div>');
-    $('<b></b>').text('SQL SAVED SLIDES').appendTo(head);
+    $('<b></b>').text('CHILDREN · SQL SAVED SLIDES').appendTo(head);
     $('<span></span>').text(slider.slides.length+' slides').appendTo(head);
     wrap.append(head);
     slider.slides.forEach((slide,index)=>{
@@ -599,7 +612,12 @@ jQuery(function($){
     $('<button type="button" class="ark-btn ark-btn-publish ark-slider-save">Save slider to SQL</button>').on('click',function(){
       const button=$(this).prop('disabled',true).text('Saving images…');
       request(sliderApiPath(key),'POST',{settings:slider.settings,slides:slider.slides})
-        .then(result=>{slider.dirty=false;toast('Slider saved · '+result.saved_slides+' slides stored.');return loadLiveSlider(section,true);})
+        .then(result=>{
+          const expected=slider.slides.filter(slide=>slide&&String(slide.image_url||'').trim()).length;
+          const saved=Number(result.saved_slides||0);
+          if(saved!==expected)throw new Error('Image save verification failed: selected '+expected+', SQL saved '+saved+'. Your previous saved slider was protected.');
+          slider.dirty=false;toast('Slider saved · '+saved+' images verified in SQL.');return loadLiveSlider(section,true);
+        })
         .catch(error=>toast(error.message||'Slider save failed.',true))
         .finally(()=>button.prop('disabled',false).text('Save slider to SQL'));
     }).appendTo(wrap);
@@ -607,7 +625,12 @@ jQuery(function($){
   }
   function saveDirtyLiveSliders(){
     return Promise.all(Object.entries(liveCache.sliders).filter(([,slider])=>slider?.dirty).map(([key,slider])=>
-      request(sliderApiPath(key),'POST',{settings:slider.settings,slides:slider.slides}).then(()=>{slider.dirty=false;})
+      request(sliderApiPath(key),'POST',{settings:slider.settings,slides:slider.slides}).then(result=>{
+        const expected=slider.slides.filter(slide=>slide&&String(slide.image_url||'').trim()).length;
+        const saved=Number(result.saved_slides||0);
+        if(saved!==expected)throw new Error('Banner '+key+' image verification failed: selected '+expected+', SQL saved '+saved+'. Publish was stopped to protect your previous images.');
+        slider.dirty=false;
+      })
     ));
   }
   const sourceState={files:[],path:'',sha:'',branch:'',tokenSaved:false};
@@ -1198,10 +1221,17 @@ jQuery(function($){
         catch(e){toast('Icon links JSON is invalid.',true);}
       });
     }
-    if(s.type==='ark_live_slider'||String(s.type||'').startsWith('banner_'))renderLiveSliderInspector(s);
+    const isLegacyImageBanner=s.type==='image' && ['grid','list','slider','scroll'].includes(String(s.banner_layout||s.layout_variant||''));
+    if(s.type==='ark_live_slider'||String(s.type||'').startsWith('banner_')||isLegacyImageBanner){
+      if(isLegacyImageBanner){
+        s.slider_key=s.slider_key||('slider-'+String(s.id||Date.now())).toLowerCase().replace(/[^a-z0-9_-]/g,'-').slice(0,64);
+        s.layout_variant=s.banner_layout||s.layout_variant;
+      }
+      renderLiveSliderInspector(s);
+    }
 
     // Shared layout properties are grouped by purpose for easier editing.
-    if(['banner_grid','banner_list','banner_slider','banner_scroll','category_grid','category_list','category_list_tile','category_scroll','category_slider','product_grid','product_carousel','product_list','product_scroll'].includes(s.type) || (s.type==='ark_live_slider' && !liveCache.sliders[s.slider_key])){
+    if(['image','ark_live_slider','banner_grid','banner_list','banner_slider','banner_scroll','category_grid','category_list','category_list_tile','category_scroll','category_slider','product_grid','product_carousel','product_list','product_scroll'].includes(s.type)){
       const group=$('<div class="ark-layout-property-group"></div>');
       $('<p class="description">Changes are saved to the native app configuration when you publish.</p>').appendTo(group);
       const addGroup=label=>{
@@ -1256,11 +1286,14 @@ jQuery(function($){
         ]));
         settings.append(field('Number of products','limit',s.limit??8,'number'));
       }
-      if(s.type==='ark_live_slider'||String(s.type||'').startsWith('banner_')){
+      if(s.type==='ark_live_slider'||String(s.type||'').startsWith('banner_')|| (s.type==='image' && ['grid','list','slider','scroll'].includes(String(s.banner_layout||s.layout_variant||'')))){
         const variant=s.layout_variant||({banner_grid:'grid',banner_list:'list',banner_scroll:'scroll'}[s.type]||'slider');
         settings.append(choiceField('Banner layout','layout_variant',variant,[
           ['grid','Banner Grid'],['list','Banner List'],['slider','Banner Slider'],['scroll','Banner Scroll']
         ]));
+      }
+      if((s.type==='ark_live_slider'||String(s.type||'').startsWith('banner_')) && (s.layout_variant||({banner_grid:'grid'}[s.type]||'slider'))==='grid'){
+        settings.append(field('Grid columns','columns',s.columns??2,'number','Choose 1–4 columns for Banner Grid.'));
       }
 
       const style=addGroup('6. STYLE & ANIMATION');
