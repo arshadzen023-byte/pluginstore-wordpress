@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Designer
  * Description: Server-driven visual app designer for ARK Native / GlowHit Flutter apps, including live layout, navigation, theme and in-app splash configuration.
- * Version: 1.17.2
+ * Version: 1.17.3
  * Author: ARK
  * Requires PHP: 7.4
  */
@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class ARK_App_Designer {
-    const VERSION = '1.17.2';
+    const VERSION = '1.17.3';
     const PUBLISHED = 'ark_app_designer_published';
     const DRAFT = 'ark_app_designer_draft';
     const REVISIONS = 'ark_app_designer_revisions';
@@ -667,9 +667,38 @@ final class ARK_App_Designer {
             if ($search !== '') $query['search'] = $search;
             $found = wc_get_products($query);
             foreach ($found as $product) {
+                // The native Designer preview needs real WooCommerce media,
+                // not only product IDs/names. Prefer the featured image and
+                // fall back to the first gallery image when no thumbnail is set.
+                $image_ids = [];
+                $featured_id = (int) $product->get_image_id();
+                if ($featured_id > 0) $image_ids[] = $featured_id;
+                if (method_exists($product, 'get_gallery_image_ids')) {
+                    foreach ((array) $product->get_gallery_image_ids() as $gallery_id) {
+                        $gallery_id = (int) $gallery_id;
+                        if ($gallery_id > 0 && !in_array($gallery_id, $image_ids, true)) $image_ids[] = $gallery_id;
+                    }
+                }
+                $images = [];
+                foreach (array_slice($image_ids, 0, 8) as $image_id) {
+                    $image_url = wp_get_attachment_image_url($image_id, 'woocommerce_thumbnail')
+                        ?: wp_get_attachment_url($image_id);
+                    if (!$image_url) continue;
+                    $images[] = [
+                        'id' => $image_id,
+                        'src' => esc_url_raw($image_url),
+                        'thumbnail' => esc_url_raw(wp_get_attachment_image_url($image_id, 'woocommerce_thumbnail') ?: $image_url),
+                        'alt' => sanitize_text_field(get_post_meta($image_id, '_wp_attachment_image_alt', true)),
+                    ];
+                }
                 $products[] = [
                     'id' => (int) $product->get_id(),
                     'name' => wp_strip_all_tags($product->get_name()),
+                    'image_url' => $images[0]['src'] ?? '',
+                    'images' => $images,
+                    'price' => wp_strip_all_tags((string) $product->get_price()),
+                    'regular_price' => wp_strip_all_tags((string) $product->get_regular_price()),
+                    'sale_price' => wp_strip_all_tags((string) $product->get_sale_price()),
                 ];
             }
         }
@@ -679,7 +708,16 @@ final class ARK_App_Designer {
             $terms = get_terms($term_query);
             if (!is_wp_error($terms)) {
                 foreach ($terms as $term) {
-                    $categories[] = ['id' => (int) $term->term_id, 'name' => $term->name];
+                    $thumbnail_id = (int) get_term_meta($term->term_id, 'thumbnail_id', true);
+                    $image_url = $thumbnail_id > 0
+                        ? (wp_get_attachment_image_url($thumbnail_id, 'woocommerce_thumbnail') ?: wp_get_attachment_url($thumbnail_id))
+                        : '';
+                    $categories[] = [
+                        'id' => (int) $term->term_id,
+                        'name' => $term->name,
+                        'image_url' => $image_url ? esc_url_raw($image_url) : '',
+                        'thumbnail' => $image_url ? esc_url_raw($image_url) : '',
+                    ];
                 }
             }
         }
@@ -946,7 +984,7 @@ final class ARK_App_Designer {
                     $slider_key = sanitize_key($section['slider_key'] ?? $section['id'] ?? wp_generate_uuid4());
                     $item['slider_key'] = $slider_key;
                     if ($legacy_banner_slider) {
-                        $slides = $section['items'] ?? $section['slides'] ?? $section['images'] ?? [];
+                        $slides = $section['items'] ?? $section['slides'] ?? $section['images'] ?? $section['children'] ?? [];
                         if (!is_array($slides)) $slides = [];
                         $is_list = ($slides === []) || (array_keys($slides) === range(0, count($slides) - 1));
                         if (!$is_list && (isset($slides['image_url']) || isset($slides['image']) || isset($slides['src']) || isset($slides['url']) || isset($slides['attachment_id']))) {
