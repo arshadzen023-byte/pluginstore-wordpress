@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Designer
  * Description: Server-driven visual app designer for ARK Native / GlowHit Flutter apps, including live layout, navigation, theme and in-app splash configuration.
- * Version: 1.17.3
+ * Version: 1.17.2
  * Author: ARK
  * Requires PHP: 7.4
  */
@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class ARK_App_Designer {
-    const VERSION = '1.17.3';
+    const VERSION = '1.17.2';
     const PUBLISHED = 'ark_app_designer_published';
     const DRAFT = 'ark_app_designer_draft';
     const REVISIONS = 'ark_app_designer_revisions';
@@ -21,10 +21,6 @@ final class ARK_App_Designer {
         add_action('admin_menu', [$this, 'admin_menu']);
         add_action('admin_enqueue_scripts', [$this, 'admin_assets']);
         add_action('rest_api_init', [$this, 'register_routes']);
-        // Some CGI/FastCGI hosting stacks expose Basic Auth through a non-standard
-        // server variable instead of PHP_AUTH_USER/PHP_AUTH_PW. Populate those
-        // variables before WordPress core validates Application Passwords.
-        add_filter('determine_current_user', [$this, 'populate_application_password_from_server_headers'], 19);
         add_action('init', [$this, 'maybe_upgrade_schema'], 5);
         if (get_option(self::PUBLISHED, null) === null) {
             update_option(self::PUBLISHED, self::default_config(), false);
@@ -641,75 +637,6 @@ final class ARK_App_Designer {
             'callback' => [$this, 'api_github_save_settings'],
             'permission_callback' => [$this, 'can_design'],
         ]);
-    }
-
-    /**
-     * Compatibility bridge for Basic Auth headers on CGI/FastCGI and proxy hosts.
-     * WordPress core validates Application Passwords using PHP_AUTH_USER/PW.
-     * Never logs or returns credential material.
-     *
-     * @param int|false $input_user A user ID already resolved by WordPress, if any.
-     * @return int|false
-     */
-    public function populate_application_password_from_server_headers($input_user) {
-        if (!empty($input_user)) {
-            return $input_user;
-        }
-
-        if (isset($_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW'])) {
-            return $input_user;
-        }
-
-        $authorization = '';
-        foreach (['HTTP_AUTHORIZATION', 'REDIRECT_HTTP_AUTHORIZATION', 'HTTP_X_AUTHORIZATION'] as $server_key) {
-            if (!empty($_SERVER[$server_key]) && is_string($_SERVER[$server_key])) {
-                $authorization = trim($_SERVER[$server_key]);
-                break;
-            }
-        }
-
-        // A few Apache/FastCGI configurations expose Authorization only via getallheaders().
-        if ($authorization === '' && function_exists('getallheaders')) {
-            $headers = getallheaders();
-            if (is_array($headers)) {
-                foreach ($headers as $name => $value) {
-                    if (strcasecmp((string) $name, 'Authorization') === 0 && is_string($value)) {
-                        $authorization = trim($value);
-                        break;
-                    }
-                }
-            }
-        }
-
-        // REMOTE_USER is used by some CGI bridges; accept it only when it contains
-        // a complete Basic token, never a plain username.
-        if ($authorization === '') {
-            foreach (['REDIRECT_REMOTE_USER', 'REMOTE_USER'] as $server_key) {
-                if (!empty($_SERVER[$server_key]) && is_string($_SERVER[$server_key]) && preg_match('/^Basic\s+/i', $_SERVER[$server_key])) {
-                    $authorization = trim($_SERVER[$server_key]);
-                    break;
-                }
-            }
-        }
-
-        if (!preg_match('/^Basic\s+([A-Za-z0-9+\/]+={0,2})$/i', $authorization, $matches)) {
-            return $input_user;
-        }
-
-        $decoded = base64_decode($matches[1], true);
-        if (!is_string($decoded)) {
-            return $input_user;
-        }
-
-        $separator = strpos($decoded, ':');
-        if ($separator === false || $separator === 0) {
-            return $input_user;
-        }
-
-        $_SERVER['PHP_AUTH_USER'] = substr($decoded, 0, $separator);
-        $_SERVER['PHP_AUTH_PW'] = substr($decoded, $separator + 1);
-
-        return $input_user;
     }
 
     public function can_design() {
@@ -1426,7 +1353,7 @@ final class ARK_App_Designer {
         echo '<div class="wrap ark-designer-wrap"><div class="ark-designer-app">';
         echo '<header class="ark-topbar"><div class="ark-brand"><span class="ark-brand-mark">A</span><div><strong>ARK App Designer</strong><small>Visual studio for GlowHit</small></div></div>';
         echo '<div class="ark-top-actions"><span class="ark-status"><i></i> Connected to WordPress</span><button class="ark-btn ark-btn-ghost" id="ark-save-draft">Save draft</button><button class="ark-btn ark-btn-publish" id="ark-publish">Publish changes ↗</button></div></header>';
-        echo '<div class="ark-release-stamp" data-ark-designer-version="1.17.3" data-ark-source-revision="1.17.3"><strong>ARK App Designer 1.17.3</strong><span>Layout Studio</span></div>';
+        echo '<div class="ark-release-stamp" data-ark-designer-version="1.17.2" data-ark-source-revision="1.17.2"><strong>ARK App Designer 1.17.2</strong><span>Layout Studio</span></div>';
         echo '<main class="ark-workspace"><aside class="ark-sidebar"><button type="button" class="ark-panel-toggle" id="ark-toggle-left" aria-label="Collapse components panel">☰ Components</button><div class="ark-sidebar-title">BUILD YOUR APP</div><div class="ark-page-list" id="ark-pages"></div><div class="ark-sidebar-divider"></div><button type="button" class="ark-quick-link" data-view="default_heading">▤ Default heading bar</button><button type="button" class="ark-quick-link" id="ark-add-page">＋ Add New Page</button><button type="button" class="ark-quick-link" id="ark-page-settings" data-view="page_settings" style="display:none">⚙ Page Settings</button><div class="ark-sidebar-divider"></div><div class="ark-sidebar-title">ADD COMPONENT</div><div class="ark-component-list" id="ark-components"></div><div class="ark-sidebar-divider"></div><button class="ark-quick-link" data-view="app">✎ App name & identity</button><button class="ark-quick-link" data-view="theme">◈ Theme & colours</button><button class="ark-quick-link" data-view="celebration">✧ Crackers animation</button><button class="ark-quick-link" data-view="loading">◌ Loading animation</button><button class="ark-quick-link" data-view="navigation">☷ Navigation</button><button class="ark-quick-link" data-view="icon_visibility">◉ Icon visibility</button><button class="ark-quick-link" data-view="source">⌘ App source files</button></aside>';
         echo '<section class="ark-canvas-area"><div class="ark-canvas-toolbar"><div><strong id="ark-canvas-title">Home page</strong><span id="ark-canvas-subtitle">Drag sections or use the arrows to change order</span></div><div class="ark-canvas-tools"><span class="ark-live-pill">● LIVE PREVIEW</span><button class="ark-icon-btn" id="ark-preview-refresh" title="Refresh preview">↻</button></div></div>';
         echo '<div class="ark-canvas-scroll"><div class="ark-phone"><div class="ark-phone-status"><span>9:41</span><span>● ● ▰</span></div><div class="ark-phone-screen" id="ark-preview"></div><div class="ark-phone-nav"><span>⌂</span><span>▦</span><span>♡</span><span>♙</span></div></div></div></section>';
