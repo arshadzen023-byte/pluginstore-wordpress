@@ -805,9 +805,14 @@ final class ARK_App_Designer {
             if (!is_array($item)) continue;
 
             $item['id'] = sanitize_key($child['id'] ?? wp_generate_uuid4());
-            $attachment_id = absint($child['attachment_id'] ?? $child['image_attachment_id'] ?? 0);
+            $raw_image = $child['image'] ?? null;
+            $image_data = is_array($raw_image) ? $raw_image : [];
+            $attachment_id = absint($child['attachment_id'] ?? $child['image_attachment_id'] ?? $child['image_id'] ?? ($image_data['id'] ?? 0));
             $attachment_url = $attachment_id > 0 ? wp_get_attachment_url($attachment_id) : '';
-            $raw_image_url = trim((string) ($child['image_url'] ?? ''));
+            $raw_image_value = is_array($raw_image)
+                ? ($raw_image['url'] ?? $raw_image['src'] ?? $raw_image['source_url'] ?? $raw_image['thumbnail'] ?? '')
+                : $raw_image;
+            $raw_image_url = trim((string) ($child['image_url'] ?? $child['src'] ?? $child['url'] ?? $raw_image_value ?? ''));
             $image_url = $this->clean_url($attachment_url ?: $raw_image_url);
             if (($raw_image_url !== '' || $attachment_id > 0) && $image_url === '') {
                 return new WP_Error(
@@ -1006,7 +1011,10 @@ final class ARK_App_Designer {
                 if (!is_array($section)) continue;
                 $type = sanitize_key($section['type'] ?? '');
                 $designer_component_type = $type;
-                $legacy_banner_slider = $type === 'banner_slider' && (!empty($section['items']) || !empty($section['slides']) || !empty($section['images']));
+                $legacy_banner_slider = $type === 'banner_slider' && (
+                    !empty($section['items']) || !empty($section['slides']) ||
+                    !empty($section['images']) || !empty($section['children'])
+                );
                 $layout_aliases = [
                     'banner_grid' => ['ark_live_slider','grid'],
                     'banner_list' => ['ark_live_slider','list'],
@@ -1063,8 +1071,27 @@ final class ARK_App_Designer {
                     $slider_key = sanitize_key($section['slider_key'] ?? $section['id'] ?? wp_generate_uuid4());
                     $item['slider_key'] = $slider_key;
                     if ($legacy_banner_slider) {
-                        $slides = $section['items'] ?? $section['slides'] ?? $section['images'] ?? $section['children'] ?? [];
+                        $slides = [];
+                        // Prefer the first populated slide collection. An empty legacy
+                        // items array must not mask images selected in the Children editor.
+                        foreach (['items', 'slides', 'images', 'children'] as $slide_source) {
+                            if (isset($section[$slide_source]) && is_array($section[$slide_source]) && !empty($section[$slide_source])) {
+                                $slides = $section[$slide_source];
+                                break;
+                            }
+                        }
                         if (!is_array($slides)) $slides = [];
+                        foreach ($slides as &$slide) {
+                            if (!is_array($slide)) continue;
+                            $image_data = is_array($slide['image'] ?? null) ? $slide['image'] : [];
+                            if (empty($slide['attachment_id'])) {
+                                $slide['attachment_id'] = absint($slide['image_attachment_id'] ?? $slide['image_id'] ?? ($image_data['id'] ?? 0));
+                            }
+                            if (empty($slide['image_url'])) {
+                                $slide['image_url'] = $slide['src'] ?? $slide['url'] ?? ($image_data['url'] ?? $image_data['src'] ?? $image_data['source_url'] ?? $image_data['thumbnail'] ?? (is_string($slide['image'] ?? null) ? $slide['image'] : ''));
+                            }
+                        }
+                        unset($slide);
                         $is_list = ($slides === []) || (array_keys($slides) === range(0, count($slides) - 1));
                         if (!$is_list && (isset($slides['image_url']) || isset($slides['image']) || isset($slides['src']) || isset($slides['url']) || isset($slides['attachment_id']))) {
                             $slides = [$slides];
