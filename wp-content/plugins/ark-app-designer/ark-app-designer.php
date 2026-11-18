@@ -804,11 +804,12 @@ final class ARK_App_Designer {
             $item = $this->clean_value($child, 0);
             if (!is_array($item)) continue;
 
+            $item['id'] = sanitize_key($child['id'] ?? wp_generate_uuid4());
             $attachment_id = absint($child['attachment_id'] ?? $child['image_attachment_id'] ?? 0);
             $attachment_url = $attachment_id > 0 ? wp_get_attachment_url($attachment_id) : '';
             $raw_image_url = trim((string) ($child['image_url'] ?? ''));
             $image_url = $this->clean_url($attachment_url ?: $raw_image_url);
-            if ($raw_image_url !== '' && $image_url === '') {
+            if (($raw_image_url !== '' || $attachment_id > 0) && $image_url === '') {
                 return new WP_Error(
                     'ark_designer_child_image_invalid',
                     'A child image URL is invalid. No design changes were saved.',
