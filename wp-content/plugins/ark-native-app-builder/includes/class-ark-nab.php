@@ -148,7 +148,7 @@ final class ARK_NAB {
     return $link;
 }
  function routes(){
-  register_rest_route('ark-native/v1','/config',['methods'=>'GET','callback'=>function(){ $o=$this->opts(); return ['app_name'=>$o['app_name'],'store_url'=>home_url('/'),'currency'=>function_exists('get_woocommerce_currency')?get_woocommerce_currency():'INR','sync_mode'=>'live','api_version'=>1]; },'permission_callback'=>'__return_true']);
+  register_rest_route('ark-native/v1','/config',['methods'=>'GET','callback'=>function(){ $o=$this->opts(); return ['app_name'=>$o['app_name'],'app_icon_url'=>$o['app_icon_url'],'store_url'=>home_url('/'),'currency'=>function_exists('get_woocommerce_currency')?get_woocommerce_currency():'INR','sync_mode'=>'live','api_version'=>1]; },'permission_callback'=>'__return_true']);
   register_rest_route('ark-native/v1','/build-artifact',['methods'=>'POST','callback'=>[$this,'artifact'],'permission_callback'=>'__return_true']);
  }
  
