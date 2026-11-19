@@ -30,6 +30,12 @@ $checks = [
     'slider editor CSS is present' => strpos($css, '.ark-live-slide-item') !== false,
 ];
 
+$checks['Native Designer Media Library REST endpoint is registered and paginated'] =
+    strpos($php, "'/studio/media'") !== false &&
+    strpos($php, 'api_studio_media') !== false &&
+    strpos($php, "'thumbnail_url' => esc_url_raw") !== false &&
+    strpos($php, "'total_pages' =>") !== false;
+
 $failed = [];
 foreach ($checks as $label => $passed) {
     if (!$passed) $failed[] = $label;
