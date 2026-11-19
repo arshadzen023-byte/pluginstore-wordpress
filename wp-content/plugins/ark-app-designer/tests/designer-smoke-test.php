@@ -50,6 +50,7 @@ $checks = [
     'per-slide date scheduling fields exist' => strpos($js, 'Start showing (optional)') !== false && strpos($js, 'Stop showing (optional)') !== false,
     'Studio target API includes WooCommerce product featured/gallery images and prices' => strpos($source, "'image_url' => $images[0]['src'] ?? ''") !== false && strpos($source, "'images' => $images") !== false && strpos($source, "'price' => wp_strip_all_tags((string) $product->get_price())") !== false,
     'Studio target API includes WooCommerce category thumbnail images' => strpos($source, "'thumbnail' => $image_url ? esc_url_raw($image_url) : ''") !== false,
+    'Native Designer Media Library API is registered and returns paginated image attachment fields' => strpos($source, "'/studio/media'") !== false && strpos($source, 'api_studio_media') !== false && strpos($source, "'thumbnail_url' => esc_url_raw") !== false && strpos($source, "'total_pages' =>") !== false,
     'Legacy Banner Slider migrates selected Children images into SQL slides' => strpos($source, "$"."section['children'] ?? []") !== false,
     'WooCommerce category link picker exists' => strpos($js, 'WooCommerce categories') !== false,
     'Banner Slider alias is available in the Designer component editor' => strpos($js, 'banner_slider') !== false && strpos($js, 'Banner Slider') !== false,
