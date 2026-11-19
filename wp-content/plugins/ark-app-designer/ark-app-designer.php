@@ -283,10 +283,16 @@ final class ARK_App_Designer {
     }
 
     public function maybe_upgrade_schema() {
-        if (absint(get_option('ark_app_designer_live_slider_schema', 0)) < 1) {
+        $live_slider_schema = absint(get_option('ark_app_designer_live_slider_schema', 0));
+        if ($live_slider_schema < 1) {
             self::create_live_slider_tables();
             $this->migrate_legacy_banner_sliders();
             update_option('ark_app_designer_live_slider_schema', 1, false);
+        } elseif ($live_slider_schema < 2) {
+            // Re-run the safe Children-media migration for existing 1.17.x installs.
+            self::create_live_slider_tables();
+            $this->migrate_legacy_banner_sliders();
+            update_option('ark_app_designer_live_slider_schema', 2, false);
         }
 
         // Upgrade existing Draft and Published documents without resetting any
@@ -373,6 +379,24 @@ final class ARK_App_Designer {
             return new WP_Error('ark_slider_limit', 'Maximum 40 images per slider.', ['status' => 400]);
         }
 
+        // Validate every selected image before deleting existing SQL rows.
+        // A stale Media Library attachment must never turn a valid slider into an empty one.
+        foreach ($slides as $slide_index => $slide) {
+            if (!is_array($slide)) {
+                return new WP_Error('ark_slider_image_invalid', 'Slide ' . ($slide_index + 1) . ' has invalid image data.', ['status' => 400]);
+            }
+            $attachment_id = absint($slide['attachment_id'] ?? 0);
+            $image_url = '';
+            if ($attachment_id > 0 && wp_attachment_is_image($attachment_id)) {
+                $image_url = wp_get_attachment_image_url($attachment_id, 'large') ?: wp_get_attachment_url($attachment_id);
+            } else {
+                $image_url = $this->clean_url($slide['image_url'] ?? '');
+            }
+            if (!$image_url) {
+                return new WP_Error('ark_slider_image_invalid', 'Slide ' . ($slide_index + 1) . ' has no valid image. Existing saved images were kept.', ['status' => 400]);
+            }
+        }
+
         $defaults = $this->live_slider_defaults();
         $row = [
             'title' => sanitize_text_field($settings['title'] ?? 'Live Slider'),
@@ -406,8 +430,8 @@ final class ARK_App_Designer {
         }
 
         $wpdb->delete($items, ['slider_key' => $slider_key], ['%s']);
+        $saved_slide_count = 0;
         foreach (array_values($slides) as $index => $slide) {
-            if (!is_array($slide)) continue;
             $attachment_id = absint($slide['attachment_id'] ?? 0);
             $image_url = '';
             $srcset = '';
@@ -417,7 +441,10 @@ final class ARK_App_Designer {
             } else {
                 $image_url = $this->clean_url($slide['image_url'] ?? '');
             }
-            if (!$image_url) continue;
+            if (!$image_url) {
+                $wpdb->query('ROLLBACK');
+                return new WP_Error('ark_slider_image_invalid', 'A selected image became unavailable during save. Existing saved images were restored.', ['status' => 500]);
+            }
             [$link_type, $link_value] = $this->normalize_slider_link(
                 $slide['link_type'] ?? 'in_app',
                 $slide['link_value'] ?? $slide['link'] ?? ''
@@ -449,9 +476,10 @@ final class ARK_App_Designer {
                 $wpdb->query('ROLLBACK');
                 return new WP_Error('ark_slider_save', 'A slider image could not be saved.', ['status' => 500]);
             }
+            $saved_slide_count++;
         }
         $wpdb->query('COMMIT');
-        return ['slider_key' => $slider_key, 'saved_slides' => count($slides)];
+        return ['slider_key' => $slider_key, 'saved_slides' => $saved_slide_count];
     }
 
     private function get_live_slider_payload($slider_key, $public = false) {
@@ -514,10 +542,34 @@ final class ARK_App_Designer {
             foreach ($config['pages'] as $page_key => &$page) {
                 if (!is_array($page) || !is_array($page['sections'] ?? null)) continue;
                 foreach ($page['sections'] as &$section) {
-                    if (!is_array($section) || ($section['type'] ?? '') !== 'banner_slider') continue;
+                    if (!is_array($section) || !in_array(($section['type'] ?? ''), ['banner_slider','banner_grid','banner_list','banner_scroll'], true)) continue;
                     $slider_key = sanitize_key($section['slider_key'] ?? $section['id'] ?? ('legacy-' . $page_key));
                     if ($option === self::PUBLISHED) {
-                        $legacy_slides = $section['items'] ?? $section['slides'] ?? $section['images'] ?? [];
+                        // Convert legacy Designer Children/media objects to the
+                        // attachment_id + image_url shape used by the SQL slider store.
+                        $legacy_slides = $section['children'] ?? $section['items'] ?? $section['slides'] ?? $section['images'] ?? [];
+                        $legacy_slides = is_array($legacy_slides) ? $legacy_slides : [];
+                        $legacy_slides = array_values(array_filter(array_map(function($child) {
+                            if (!is_array($child)) return null;
+                            $attachment_id = absint($child['attachment_id'] ?? $child['media_id'] ?? $child['id'] ?? 0);
+                            $image_url = $child['image_url'] ?? $child['url'] ?? $child['src'] ?? $child['image'] ?? '';
+                            if (is_array($image_url)) $image_url = $image_url['url'] ?? $image_url['src'] ?? '';
+                            return [
+                                'attachment_id' => $attachment_id,
+                                'image_url' => esc_url_raw((string) $image_url),
+                                'title' => sanitize_text_field($child['title'] ?? ''),
+                                'subtitle' => sanitize_textarea_field($child['subtitle'] ?? ''),
+                                'alt_text' => sanitize_text_field($child['alt_text'] ?? $child['alt'] ?? ''),
+                                'button_label' => sanitize_text_field($child['button_label'] ?? ''),
+                                'link_type' => $child['link_type'] ?? 'in_app',
+                                'link_value' => $child['link_value'] ?? $child['link'] ?? '',
+                                'active' => !array_key_exists('active', $child) || !empty($child['active']),
+                                'starts_at' => $child['starts_at'] ?? '',
+                                'ends_at' => $child['ends_at'] ?? '',
+                            ];
+                        }, $legacy_slides), function($slide) {
+                            return is_array($slide) && ($slide['attachment_id'] > 0 || $slide['image_url'] !== '');
+                        }));
                         $legacy_settings = [
                             'title' => $section['title'] ?? 'Live Slider',
                             'height_px' => $section['height'] ?? 178,
@@ -529,7 +581,10 @@ final class ARK_App_Designer {
                             'show_arrows' => $section['show_arrows'] ?? false,
                             'pagination' => !empty($section['show_dots']) ? 'dots' : 'none',
                         ];
-                        $this->save_live_slider_payload($slider_key, $legacy_settings, is_array($legacy_slides) ? $legacy_slides : []);
+                        // Do not wipe a valid SQL slider when an older config has no Children.
+                        if (!empty($legacy_slides)) {
+                            $this->save_live_slider_payload($slider_key, $legacy_settings, $legacy_slides);
+                        }
                     }
                     $section['type'] = 'ark_live_slider';
                     $section['slider_key'] = $slider_key;
@@ -613,6 +668,11 @@ final class ARK_App_Designer {
         register_rest_route(self::REST_NAMESPACE, '/studio/targets', [
             'methods' => WP_REST_Server::READABLE,
             'callback' => [$this, 'api_studio_targets'],
+            'permission_callback' => [$this, 'can_design'],
+        ]);
+        register_rest_route(self::REST_NAMESPACE, '/studio/media', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [$this, 'api_studio_media'],
             'permission_callback' => [$this, 'can_design'],
         ]);
         register_rest_route(self::REST_NAMESPACE, '/studio/github/tree', [
@@ -932,7 +992,10 @@ final class ARK_App_Designer {
                 if (!is_array($section)) continue;
                 $type = sanitize_key($section['type'] ?? '');
                 $designer_component_type = $type;
-                $legacy_banner_slider = $type === 'banner_slider' && (!empty($section['items']) || !empty($section['slides']) || !empty($section['images']));
+                // All banner layout variants use the same SQL-backed slide store.
+                // The Designer's current image picker writes selected media to children.
+                $legacy_banner_slider = in_array($type, ['banner_slider','banner_grid','banner_list','banner_scroll'], true)
+                    && (!empty($section['items']) || !empty($section['slides']) || !empty($section['images']) || !empty($section['children']));
                 $layout_aliases = [
                     'banner_grid' => ['ark_live_slider','grid'],
                     'banner_list' => ['ark_live_slider','list'],
@@ -1199,6 +1262,49 @@ final class ARK_App_Designer {
         $clean['splash']['fit'] = $splash_fit;
         $clean['splash']['background'] = $splash_background;
         return $clean;
+    }
+
+    /**
+     * Return paginated image attachments from the real WordPress Media Library
+     * for the native Designer. The endpoint is administrator-only.
+     */
+    public function api_studio_media($request) {
+        $page = max(1, absint($request->get_param('page')));
+        $per_page = min(60, max(1, absint($request->get_param('per_page') ?: 30)));
+        $search = sanitize_text_field((string) $request->get_param('search'));
+        $query = new WP_Query([
+            'post_type' => 'attachment',
+            'post_status' => 'inherit',
+            'post_mime_type' => 'image',
+            'posts_per_page' => $per_page,
+            'paged' => $page,
+            'orderby' => 'date',
+            'order' => 'DESC',
+            's' => $search,
+            'no_found_rows' => false,
+        ]);
+        $items = [];
+        foreach ((array) $query->posts as $attachment) {
+            $id = (int) $attachment->ID;
+            $source = wp_get_attachment_url($id);
+            if (!$source) continue;
+            $thumbnail = wp_get_attachment_image_url($id, 'thumbnail') ?: $source;
+            $items[] = [
+                'id' => $id,
+                'title' => sanitize_text_field(get_the_title($id)),
+                'source_url' => esc_url_raw($source),
+                'thumbnail_url' => esc_url_raw($thumbnail),
+                'alt_text' => sanitize_text_field(get_post_meta($id, '_wp_attachment_image_alt', true)),
+                'mime_type' => sanitize_text_field((string) get_post_mime_type($id)),
+            ];
+        }
+        return rest_ensure_response([
+            'items' => $items,
+            'page' => $page,
+            'per_page' => $per_page,
+            'total' => (int) $query->found_posts,
+            'total_pages' => max(1, (int) $query->max_num_pages),
+        ]);
     }
 
     public function api_save_draft($request) {
