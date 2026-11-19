@@ -670,6 +670,11 @@ final class ARK_App_Designer {
             'callback' => [$this, 'api_studio_targets'],
             'permission_callback' => [$this, 'can_design'],
         ]);
+        register_rest_route(self::REST_NAMESPACE, '/studio/media', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [$this, 'api_studio_media'],
+            'permission_callback' => [$this, 'can_design'],
+        ]);
         register_rest_route(self::REST_NAMESPACE, '/studio/github/tree', [
             'methods' => WP_REST_Server::READABLE,
             'callback' => [$this, 'api_github_tree'],
@@ -1257,6 +1262,49 @@ final class ARK_App_Designer {
         $clean['splash']['fit'] = $splash_fit;
         $clean['splash']['background'] = $splash_background;
         return $clean;
+    }
+
+    /**
+     * Return paginated image attachments from the real WordPress Media Library
+     * for the native Designer. The endpoint is administrator-only.
+     */
+    public function api_studio_media($request) {
+        $page = max(1, absint($request->get_param('page')));
+        $per_page = min(60, max(1, absint($request->get_param('per_page') ?: 30)));
+        $search = sanitize_text_field((string) $request->get_param('search'));
+        $query = new WP_Query([
+            'post_type' => 'attachment',
+            'post_status' => 'inherit',
+            'post_mime_type' => 'image',
+            'posts_per_page' => $per_page,
+            'paged' => $page,
+            'orderby' => 'date',
+            'order' => 'DESC',
+            's' => $search,
+            'no_found_rows' => false,
+        ]);
+        $items = [];
+        foreach ((array) $query->posts as $attachment) {
+            $id = (int) $attachment->ID;
+            $source = wp_get_attachment_url($id);
+            if (!$source) continue;
+            $thumbnail = wp_get_attachment_image_url($id, 'thumbnail') ?: $source;
+            $items[] = [
+                'id' => $id,
+                'title' => sanitize_text_field(get_the_title($id)),
+                'source_url' => esc_url_raw($source),
+                'thumbnail_url' => esc_url_raw($thumbnail),
+                'alt_text' => sanitize_text_field(get_post_meta($id, '_wp_attachment_image_alt', true)),
+                'mime_type' => sanitize_text_field((string) get_post_mime_type($id)),
+            ];
+        }
+        return rest_ensure_response([
+            'items' => $items,
+            'page' => $page,
+            'per_page' => $per_page,
+            'total' => (int) $query->found_posts,
+            'total_pages' => max(1, (int) $query->max_num_pages),
+        ]);
     }
 
     public function api_save_draft($request) {
