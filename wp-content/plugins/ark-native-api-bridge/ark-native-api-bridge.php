@@ -908,7 +908,7 @@ final class ARK_Native_API_Bridge {
             ];
         }
 
-        $upi_enabled = ($settings['enabled'] ?? 'no') === 'yes' && !empty($settings['vpa']) && ($settings['hide_on_mobile'] ?? 'no') !== 'yes';
+        $upi_enabled = ($settings['enabled'] ?? 'no') === 'yes' && !empty($settings['vpa']) && ($settings['hide_on_mobile'] ?? 'no') !== 'yes' && get_woocommerce_currency() === 'INR';
         $upi_available = false;
         foreach ($gateways as $gateway) {
             if ($gateway['id'] === 'wc-upi') $upi_available = true;
