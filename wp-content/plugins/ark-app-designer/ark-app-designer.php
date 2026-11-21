@@ -1040,6 +1040,63 @@ final class ARK_App_Designer {
                 $item['designer_component_type'] = $designer_component_type;
                 $item['layout_variant'] = $layout_variant !== '' ? $layout_variant : ($item['layout_variant'] ?? '');
                 $item['visible'] = !array_key_exists('visible', $section) || (bool) $section['visible'];
+
+                // Keep Children media as durable WordPress attachment references.
+                // A missing/invalid attachment must fail the save instead of
+                // silently leaving an empty child image in the published config.
+                $children = $section['children'] ?? [];
+                if (is_array($children)) {
+                    $item['children'] = [];
+                    foreach (array_slice($children, 0, 100) as $child) {
+                        if (!is_array($child)) continue;
+                        $child_item = $this->clean_value($child);
+                        $attachment_id = absint($child['attachment_id'] ?? $child['media_id'] ?? 0);
+                        if ($attachment_id > 0) {
+                            if (!wp_attachment_is_image($attachment_id)) {
+                                return new WP_Error(
+                                    'ark_designer_child_media_invalid',
+                                    'A child image references a missing or non-image WordPress attachment.',
+                                    ['status' => 400]
+                                );
+                            }
+                            $attachment_url = wp_get_attachment_url($attachment_id);
+                            if (!$attachment_url) {
+                                return new WP_Error(
+                                    'ark_designer_child_media_url',
+                                    'WordPress could not resolve a child image attachment URL.',
+                                    ['status' => 400]
+                                );
+                            }
+                            $child_item['attachment_id'] = $attachment_id;
+                            $child_item['media_id'] = $attachment_id;
+                            $child_item['image_url'] = esc_url_raw($attachment_url, ['http', 'https']);
+                        } elseif (isset($child['image_url']) && is_string($child['image_url']) && trim($child['image_url']) !== '') {
+                            $safe_image_url = $this->clean_url($child['image_url']);
+                            if ($safe_image_url === '') {
+                                return new WP_Error(
+                                    'ark_designer_child_image_invalid',
+                                    'A child image URL is invalid. No draft or publish changes were saved.',
+                                    ['status' => 400]
+                                );
+                            }
+                            $child_item['image_url'] = $safe_image_url;
+                        }
+                        foreach (['src', 'url'] as $url_key) {
+                            if (isset($child[$url_key]) && is_string($child[$url_key])) {
+                                $safe_url = $this->clean_url($child[$url_key]);
+                                if ($safe_url !== '') $child_item[$url_key] = $safe_url;
+                            }
+                        }
+                        if (isset($child['link_value'])) {
+                            $child_item['link_value'] = sanitize_text_field($child['link_value']);
+                        }
+                        if (isset($child['link_type'])) {
+                            $child_item['link_type'] = in_array($child['link_type'], ['in_app','deeplink','chrome'], true)
+                                ? $child['link_type'] : 'in_app';
+                        }
+                        $item['children'][] = $child_item;
+                    }
+                }
                 if (isset($section['image_url'])) $item['image_url'] = $this->clean_url($section['image_url']);
                 if (isset($section['background_image_url'])) $item['background_image_url'] = $this->clean_url($section['background_image_url']);
                 if (isset($section['children']) && is_array($section['children'])) {
