@@ -889,6 +889,25 @@ final class ARK_Native_API_Bridge {
             ];
         }
 
+        // COD can be omitted by get_available_payment_gateways() on a fresh
+        // REST request before WooCommerce has hydrated the customer/session.
+        // Use the saved gateway enable flag as a native selector fallback;
+        // checkout still validates actual gateway availability when the order is placed.
+        $cod_settings = get_option('woocommerce_cod_settings', []);
+        $cod_settings = is_array($cod_settings) ? $cod_settings : [];
+        $cod_enabled = ($cod_settings['enabled'] ?? 'no') === 'yes';
+        $cod_available = false;
+        foreach ($gateways as $gateway) {
+            if ($gateway['id'] === 'cod') $cod_available = true;
+        }
+        if ($cod_enabled && !$cod_available) {
+            $gateways[] = [
+                'id' => 'cod',
+                'title' => sanitize_text_field($cod_settings['title'] ?? 'Cash on Delivery'),
+                'description' => wp_strip_all_tags((string) ($cod_settings['description'] ?? 'Pay when your order is delivered.')),
+            ];
+        }
+
         $upi_enabled = ($settings['enabled'] ?? 'no') === 'yes' && !empty($settings['vpa']) && ($settings['hide_on_mobile'] ?? 'no') !== 'yes';
         $upi_available = false;
         foreach ($gateways as $gateway) {
