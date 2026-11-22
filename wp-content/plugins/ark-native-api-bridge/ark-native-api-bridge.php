@@ -860,6 +860,7 @@ final class ARK_Native_API_Bridge {
         }
 
         $status = $order->get_status();
+        $reason = sanitize_textarea_field((string) $request->get_param('reason'));
         if (!in_array($status, ['pending', 'on-hold', 'processing'], true)
             || in_array($status, ['shipped', 'completed', 'cancelled', 'refunded', 'failed'], true)) {
             return new WP_Error(
@@ -873,6 +874,10 @@ final class ARK_Native_API_Bridge {
         $note = $refund_review_required
             ? 'Customer cancelled before shipment from the ARK Native App. Payment was captured; the store must review and process any refund manually.'
             : 'Cancelled by customer from the ARK Native App before shipment.';
+        if ($reason !== '') {
+            $order->update_meta_data('_ark_customer_cancel_reason', $reason);
+            $note .= ' Customer reason: ' . $reason;
+        }
         if ($refund_review_required) {
             $order->update_meta_data('_ark_refund_review_required', 'yes');
             $order->save();
