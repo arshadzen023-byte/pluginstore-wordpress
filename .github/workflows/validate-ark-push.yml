@@ -29,7 +29,7 @@ jobs:
         run: |
           mkdir -p dist
           cd wp-content/plugins
-          zip -r ../../../dist/ark-app-push-notifications-1.3.1.zip ark-app-push-notifications
+          zip -r ../../dist/ark-app-push-notifications-1.3.1.zip ark-app-push-notifications
       - uses: actions/upload-artifact@v4
         with:
           name: ark-app-push-notifications-1.3.1
