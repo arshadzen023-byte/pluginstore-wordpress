@@ -1524,7 +1524,6 @@ JS;
             $inbox_since,
             $user_id,
             $installed_at,
-            $installed_at,
             $device->token_hash
         ), ARRAY_A);
         $items = [];
