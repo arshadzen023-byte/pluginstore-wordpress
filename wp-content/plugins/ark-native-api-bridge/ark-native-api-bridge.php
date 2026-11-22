@@ -39,6 +39,40 @@ final class ARK_Native_API_Bridge {
             'callback' => [$this, 'update_profile'],
             'permission_callback' => [$this, 'authorize'],
         ]);
+
+        // Compatibility routes used by the current GlowHit Android client.
+        // They share this bridge's JWT authentication; the retired customer API
+        // plugin is not required.
+        register_rest_route(self::NS, '/customer/login', [
+            'methods' => 'POST', 'callback' => [$this, 'customer_login_compat'], 'permission_callback' => '__return_true',
+        ]);
+        register_rest_route(self::NS, '/customer/logout', [
+            'methods' => 'POST', 'callback' => [$this, 'customer_logout_compat'], 'permission_callback' => [$this, 'authorize'],
+        ]);
+        register_rest_route(self::NS, '/customer/me', [
+            ['methods' => 'GET', 'callback' => [$this, 'customer_profile_compat'], 'permission_callback' => [$this, 'authorize']],
+            ['methods' => 'PUT', 'callback' => [$this, 'customer_profile_compat'], 'permission_callback' => [$this, 'authorize']],
+        ]);
+        register_rest_route(self::NS, '/customer/orders', [
+            'methods' => 'GET', 'callback' => [$this, 'customer_orders_compat'], 'permission_callback' => [$this, 'authorize'],
+        ]);
+        register_rest_route(self::NS, '/customer/orders/(?P<id>\\d+)', [
+            'methods' => 'GET', 'callback' => [$this, 'customer_order_detail_compat'], 'permission_callback' => [$this, 'authorize'],
+        ]);
+        register_rest_route(self::NS, '/customer/orders/(?P<id>\\d+)/cancel', [
+            'methods' => 'POST', 'callback' => [$this, 'cancel_order'], 'permission_callback' => [$this, 'authorize'],
+        ]);
+        register_rest_route(self::NS, '/customer/orders/(?P<id>\\d+)/return', [
+            'methods' => 'POST', 'callback' => [$this, 'customer_return_request'], 'permission_callback' => [$this, 'authorize'],
+        ]);
+        register_rest_route(self::NS, '/customer/downloads', [
+            'methods' => 'GET', 'callback' => [$this, 'customer_downloads_compat'], 'permission_callback' => [$this, 'authorize'],
+        ]);
+        register_rest_route(self::NS, '/customer/addresses', [
+            ['methods' => 'GET', 'callback' => [$this, 'customer_addresses_compat'], 'permission_callback' => [$this, 'authorize']],
+            ['methods' => 'POST', 'callback' => [$this, 'customer_addresses_compat'], 'permission_callback' => [$this, 'authorize']],
+            ['methods' => 'DELETE', 'callback' => [$this, 'customer_addresses_compat'], 'permission_callback' => [$this, 'authorize']],
+        ]);
         register_rest_route(self::NS, '/account/addresses', [
             'methods' => 'GET',
             'callback' => [$this, 'account_addresses'],
@@ -615,6 +649,7 @@ final class ARK_Native_API_Bridge {
                 'sku' => $product ? $product->get_sku() : '',
                 'unit_price' => $this->order_money($item->get_subtotal() / max(1, $item->get_quantity()), $order->get_currency()),
                 'line_total' => $this->order_money($item->get_total(), $order->get_currency()),
+                'total' => (float) $item->get_total(),
                 'image' => $product ? wp_get_attachment_image_url($product->get_image_id(), 'woocommerce_thumbnail') : '',
             ];
         }
@@ -631,8 +666,13 @@ final class ARK_Native_API_Bridge {
             'id' => $order->get_id(),
             'number' => $order->get_order_number(),
             'status' => wc_get_order_status_name($status),
+            'status_label' => wc_get_order_status_name($status),
             'status_key' => $status,
             'date' => $date ? $date->date(DATE_ATOM) : '',
+            'date_created' => $date ? $date->date(DATE_ATOM) : '',
+            'payment_status' => $order->is_paid() ? 'Paid' : (in_array($status, ['pending', 'on-hold'], true) ? 'Awaiting verification' : ($status === 'refunded' ? 'Refunded' : 'Unpaid')),
+            'return_request_status' => (string) $order->get_meta('_ark_return_request_status', true),
+            'refund_review_required' => $order->get_meta('_ark_refund_review_required', true) === 'yes',
             'total' => $this->order_money($order->get_total(), $order->get_currency()),
             'total_value' => (float) $order->get_total(),
             'subtotal' => $this->order_money($order->get_subtotal(), $order->get_currency()),
@@ -663,6 +703,15 @@ final class ARK_Native_API_Bridge {
             ];
             $payload['shipping'] = [
                 'name' => trim(($shipping['first_name'] ?? '') . ' ' . ($shipping['last_name'] ?? '')),
+                'first_name' => $shipping['first_name'] ?? '',
+                'last_name' => $shipping['last_name'] ?? '',
+                'address_1' => $shipping['address_1'] ?? '',
+                'address_2' => $shipping['address_2'] ?? '',
+                'city' => $shipping['city'] ?? '',
+                'state' => $shipping['state'] ?? '',
+                'postcode' => $shipping['postcode'] ?? '',
+                'country' => $shipping['country'] ?? '',
+                'phone' => $shipping['phone'] ?? '',
                 'address' => implode(', ', array_filter([
                     $shipping['address_1'] ?? '',
                     $shipping['address_2'] ?? '',
@@ -839,6 +888,185 @@ final class ARK_Native_API_Bridge {
         ]);
     }
 
+
+    public function customer_login_compat($request) {
+        $data = $request->get_json_params();
+        $login = sanitize_text_field((string) ($data['email_or_username'] ?? $data['username'] ?? ''));
+        $password = (string) ($data['password'] ?? '');
+        if ($login === '' || $password === '') {
+            return new WP_Error('ark_login_fields', 'Enter your email or username and password.', ['status' => 400]);
+        }
+        if (is_email($login)) {
+            $found = get_user_by('email', $login);
+            if ($found) $login = $found->user_login;
+        }
+        $user = wp_authenticate($login, $password);
+        if (is_wp_error($user)) {
+            return new WP_Error('ark_login_failed', 'Incorrect username/email or password.', ['status' => 401]);
+        }
+        $token = $this->issue_token($user->ID);
+        return rest_ensure_response([
+            'success' => true,
+            'session' => ['token' => $token, 'expires_in' => self::TOKEN_TTL],
+            'customer' => ['id' => (int) $user->ID, 'email' => $user->user_email, 'name' => $user->display_name],
+            'token' => $token,
+            'user' => $this->user_payload($user),
+        ]);
+    }
+
+    public function customer_logout_compat($request) {
+        // JWTs are short-lived and stateless; client removes its local token.
+        return rest_ensure_response(['logged_out' => true]);
+    }
+
+    public function customer_profile_compat($request) {
+        $user_id = get_current_user_id();
+        if ($request->get_method() === 'PUT') {
+            $data = $request->get_json_params();
+            $user_data = ['ID' => $user_id];
+            if (isset($data['display_name'])) $user_data['display_name'] = sanitize_text_field($data['display_name']);
+            if (isset($data['email'])) {
+                $email = sanitize_email($data['email']);
+                if (!is_email($email)) return new WP_Error('ark_invalid_email', 'Enter a valid email address.', ['status' => 400]);
+                $existing = email_exists($email);
+                if ($existing && (int) $existing !== $user_id) return new WP_Error('ark_email_exists', 'This email is already used by another account.', ['status' => 409]);
+                $user_data['user_email'] = $email;
+            }
+            $updated = wp_update_user($user_data);
+            if (is_wp_error($updated)) return $updated;
+            foreach (['first_name' => 'first_name', 'last_name' => 'last_name', 'billing_phone' => 'billing_phone'] as $key => $meta) {
+                if (isset($data[$key])) update_user_meta($user_id, $meta, sanitize_text_field($data[$key]));
+            }
+        }
+        $user = get_user_by('id', $user_id);
+        $customer = function_exists('WC') && WC() ? new WC_Customer($user_id) : null;
+        return rest_ensure_response([
+            'id' => $user_id,
+            'email' => $user ? $user->user_email : '',
+            'display_name' => $user ? $user->display_name : '',
+            'first_name' => get_user_meta($user_id, 'first_name', true),
+            'last_name' => get_user_meta($user_id, 'last_name', true),
+            'billing' => $customer ? $customer->get_billing() : [],
+            'shipping' => $customer ? $customer->get_shipping() : [],
+        ]);
+    }
+
+    public function customer_orders_compat($request) {
+        $response = $this->orders($request);
+        if (is_wp_error($response)) return $response;
+        $data = $response instanceof WP_REST_Response ? $response->get_data() : $response;
+        return rest_ensure_response(is_array($data) ? ($data['orders'] ?? []) : []);
+    }
+
+    public function customer_order_detail_compat($request) {
+        $response = $this->order_detail($request);
+        if (is_wp_error($response)) return $response;
+        $data = $response instanceof WP_REST_Response ? $response->get_data() : $response;
+        return rest_ensure_response(is_array($data) ? ($data['order'] ?? $data) : []);
+    }
+
+    public function customer_downloads_compat($request) {
+        $response = $this->account_downloads($request);
+        if (is_wp_error($response)) return $response;
+        $data = $response instanceof WP_REST_Response ? $response->get_data() : $response;
+        return rest_ensure_response(is_array($data) ? ($data['downloads'] ?? []) : []);
+    }
+
+    public function customer_addresses_compat($request) {
+        $user_id = get_current_user_id();
+        $addresses = get_user_meta($user_id, '_ark_native_saved_addresses', true);
+        $addresses = is_array($addresses) ? array_values($addresses) : [];
+        $method = $request->get_method();
+
+        if ($method === 'POST') {
+            $data = $request->get_json_params();
+            $data = is_array($data) ? $data : [];
+            $address = [];
+            foreach (['first_name','last_name','company','address_1','address_2','city','state','postcode','country','email','phone'] as $key) {
+                $address[$key] = sanitize_text_field((string) ($data[$key] ?? ''));
+            }
+            $address['label'] = sanitize_text_field((string) ($data['label'] ?? 'Home'));
+            if ($address['address_1'] === '' || $address['city'] === '' || $address['postcode'] === '' || $address['country'] === '') {
+                return new WP_Error('ark_address_incomplete', 'Enter street, city, PIN code and country.', ['status' => 400]);
+            }
+            $id = sanitize_text_field((string) ($data['id'] ?? ''));
+            $matched = false;
+            foreach ($addresses as &$existing) {
+                if (($id !== '' && ($existing['id'] ?? '') === $id) ||
+                    (($existing['address_1'] ?? '') === $address['address_1'] && ($existing['postcode'] ?? '') === $address['postcode'] && ($existing['first_name'] ?? '') === $address['first_name'])) {
+                    $address['id'] = $existing['id'] ?? wp_generate_uuid4();
+                    $existing = $address;
+                    $matched = true;
+                    break;
+                }
+            }
+            unset($existing);
+            if (!$matched) {
+                $address['id'] = wp_generate_uuid4();
+                $addresses[] = $address;
+            }
+            update_user_meta($user_id, '_ark_native_saved_addresses', $addresses);
+
+            // Keep WooCommerce's default billing/shipping profile in sync with
+            // the most recently saved address for subsequent native checkouts.
+            if (function_exists('WC') && WC()) {
+                $customer = new WC_Customer($user_id);
+                foreach ($address as $key => $value) {
+                    if (in_array($key, ['label','id'], true)) continue;
+                    if (method_exists($customer, 'set_shipping_' . $key)) $customer->{'set_shipping_' . $key}($value);
+                    if (in_array($key, ['first_name','last_name','company','address_1','address_2','city','state','postcode','country','email','phone'], true)
+                        && method_exists($customer, 'set_billing_' . $key)) $customer->{'set_billing_' . $key}($value);
+                }
+                $customer->save();
+            }
+            return rest_ensure_response($addresses);
+        }
+
+        if ($method === 'DELETE') {
+            $id = sanitize_text_field((string) $request->get_param('id'));
+            $addresses = array_values(array_filter($addresses, function ($item) use ($id) {
+                return (string) ($item['id'] ?? '') !== $id;
+            }));
+            update_user_meta($user_id, '_ark_native_saved_addresses', $addresses);
+        }
+
+        if (!$addresses && function_exists('WC') && WC()) {
+            $customer = new WC_Customer($user_id);
+            $shipping = $customer->get_shipping();
+            if (!empty($shipping['address_1'])) {
+                $shipping['label'] = 'Default';
+                $shipping['id'] = 'default';
+                $addresses[] = $shipping;
+            }
+        }
+        return rest_ensure_response($addresses);
+    }
+
+    public function customer_return_request($request) {
+        $order = wc_get_order(absint($request['id']));
+        if (!$order) return new WP_Error('ark_order_not_found', 'Order was not found.', ['status' => 404]);
+        if ((int) $order->get_customer_id() !== get_current_user_id()) {
+            return new WP_Error('ark_order_forbidden', 'You cannot request a return for this order.', ['status' => 403]);
+        }
+        if ($order->get_status() !== 'completed') {
+            return new WP_Error('ark_return_not_eligible', 'A return request is available after the order is delivered.', ['status' => 409]);
+        }
+        if ($order->get_meta('_ark_return_request_status', true) === 'pending') {
+            return new WP_Error('ark_return_duplicate', 'A return request is already awaiting review.', ['status' => 409]);
+        }
+        $reason = sanitize_textarea_field((string) $request->get_param('reason'));
+        if (mb_strlen($reason) < 5) return new WP_Error('ark_return_reason', 'Please enter a return reason (at least 5 characters).', ['status' => 400]);
+        $order->update_meta_data('_ark_return_request_status', 'pending');
+        $order->update_meta_data('_ark_return_request_reason', $reason);
+        $order->add_order_note('Customer requested a return: ' . $reason, false);
+        $order->save();
+        return rest_ensure_response([
+            'success' => true,
+            'return_request_status' => 'pending',
+            'message' => 'Return request sent to the store for review. The store will confirm eligibility and refund options.',
+        ]);
+    }
+
     private function wishlist_ids($user_id) {
         $ids = (array) get_user_meta($user_id, self::WISHLIST_META, true);
         $ids = array_values(array_unique(array_filter(array_map('absint', $ids))));
@@ -978,8 +1206,11 @@ final class ARK_Native_API_Bridge {
         if ($order->get_payment_method() !== 'wc-upi') {
             return new WP_Error('ark_upi_method', 'This order does not use the UPI QR payment method.', ['status' => 400]);
         }
-        if (!$order->needs_payment()) {
-            return new WP_Error('ark_upi_status', 'This order is no longer waiting for payment.', ['status' => 409]);
+        // UPI gateways commonly move a newly placed QR order to On Hold before
+        // the customer uploads proof. needs_payment() is false for On Hold, so
+        // validate the actual order state and paid flag instead.
+        if ($order->is_paid() || !in_array($order->get_status(), ['pending', 'on-hold'], true)) {
+            return new WP_Error('ark_upi_status', 'This UPI order is already paid or is no longer awaiting payment proof.', ['status' => 409]);
         }
 
         if ($utr !== '') {
