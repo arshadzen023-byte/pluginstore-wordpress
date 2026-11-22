@@ -17,12 +17,12 @@ WordPress plugin and Flutter integration for sending image notifications to regi
 - Firebase Cloud Messaging HTTP v1 delivery using a service-account key stored only in WordPress options.
 - Batch delivery through WP-Cron to avoid large synchronous requests.
 - Registered device count, accepted/failed send counts, notification history and unique-device click counts.
-- Flutter notification inbox with the 5 newest messages, image cards and a live countdown only when a deadline was selected. Debug/connection diagnostics are not shown in the customer inbox.
+- Flutter notification inbox with the 6 newest messages, image cards and a live countdown only when a deadline was selected. Debug/connection diagnostics are not shown in the customer inbox.
 - Deep links: `ark://product/123`, `ark://orders`, `ark://notifications`; HTTPS and supported external app schemes open through Android.
 
 ## Install
 
-Plugin release: **1.3.0**. GlowHit companion APK: **1.0.20 (build 20)**.
+Plugin release: **1.3.2**. GlowHit companion APK: **1.0.20 (build 20)**.
 
 1. Upload and activate this plugin from **WordPress Admin → Plugins → Add Plugin → Upload Plugin**.
 2. Confirm the site is HTTPS and WordPress cron can run.
@@ -50,6 +50,7 @@ Create the Firebase Android app with the same package ID as the APK (currently `
 - Click reports count each registered device once per message. This is a device-level click estimate, not a count of verified human identities or unique people.
 - FCM HTTP v1 data payloads use the namespaced `ark_message_type` key. Do not rename this to `message_type`; Firebase reserves that key and rejects the whole send request.
 - Each app installation sends a persistent installation ID. Token refresh updates the same device row; token changes do not create a second active row for the same installation.
+- The app inbox returns at most six messages and supports per-device dismissal with `DELETE /wp-json/ark-push/v1/messages/{id}`. Dismissing a message hides it only on that installation; it does not delete the store-wide campaign or another customer's order alert.
 - The app inbox only returns campaigns sent after that device was registered, so a newly installed app does not receive the entire historical campaign archive. Customer order alerts remain scoped to the signed-in customer.
 - When a different customer account signs in on the same phone, the campaign inbox cutoff resets to that account-link time. GlowHit also clears local tray alerts and local read/delete state from the previous account.
 - If the WordPress pretty REST route returns 404, the app retries via WordPress' built-in `?rest_route=/ark-push/v1/...` endpoint.
