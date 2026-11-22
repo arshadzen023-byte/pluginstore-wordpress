@@ -1,0 +1,39 @@
+name: Validate ARK Native API Bridge
+
+on:
+  push:
+    branches: ['fix/glowhit-customer-orders-payment-2026-11-22']
+  pull_request:
+    branches: [main]
+    paths:
+      - 'wp-content/plugins/ark-native-api-bridge/**'
+      - '.github/workflows/validate-native-bridge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: none
+      - name: PHP syntax check
+        run: php -l wp-content/plugins/ark-native-api-bridge/ark-native-api-bridge.php
+      - name: Package WordPress plugin
+        run: |
+          mkdir -p dist
+          cd wp-content/plugins
+          zip -r ../../../dist/ark-native-api-bridge-1.0.4.zip ark-native-api-bridge
+      - name: Upload installable plugin ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: ark-native-api-bridge-1.0.4
+          path: dist/ark-native-api-bridge-1.0.4.zip
+          if-no-files-found: error
+          retention-days: 14
