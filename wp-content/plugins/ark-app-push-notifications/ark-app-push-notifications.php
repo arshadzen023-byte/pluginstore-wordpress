@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Push Notifications
  * Description: Send image notifications and timed sale alerts to registered ARK Native Android app installs, with delivery and click analytics.
- * Version: 1.3.0
+ * Version: 1.3.1
  * Author: ARK
  * Requires Plugins: woocommerce
  * Requires PHP: 7.4
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 }
 
 final class ARK_App_Push_Notifications {
-    const VERSION = '1.3.0';
+    const VERSION = '1.3.1';
     const OPTION = 'ark_app_push_settings';
     const CRON_HOOK = 'ark_app_push_send_batch';
     const SCHEDULE_HOOK = 'ark_app_push_send_scheduled';
@@ -21,12 +21,14 @@ final class ARK_App_Push_Notifications {
     private $devices;
     private $messages;
     private $clicks;
+    private $dismissals;
 
     public function __construct() {
         global $wpdb;
         $this->devices = $wpdb->prefix . 'ark_push_devices';
         $this->messages = $wpdb->prefix . 'ark_push_messages';
         $this->clicks = $wpdb->prefix . 'ark_push_clicks';
+        $this->dismissals = $wpdb->prefix . 'ark_push_dismissals';
 
         // Upgrade database columns once after plugin update.
         if (get_option('ark_app_push_db_version') !== self::VERSION) {
@@ -123,6 +125,17 @@ final class ARK_App_Push_Notifications {
             PRIMARY KEY  (id),
             UNIQUE KEY message_device (message_id,token_hash),
             KEY message_id (message_id)
+        ) {$charset};");
+
+        $dismissals = $wpdb->prefix . 'ark_push_dismissals';
+        dbDelta("CREATE TABLE {$dismissals} (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            message_id bigint(20) unsigned NOT NULL,
+            token_hash char(64) NOT NULL,
+            dismissed_at datetime NOT NULL,
+            PRIMARY KEY  (id),
+            UNIQUE KEY message_device (message_id,token_hash),
+            KEY token_hash (token_hash)
         ) {$charset};");
 
         update_option('ark_app_push_db_version', self::VERSION, false);
@@ -1165,6 +1178,11 @@ JS;
             'permission_callback' => '__return_true',
             'callback' => [$this, 'api_click'],
         ]);
+        register_rest_route('ark-push/v1', '/messages/delete', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'permission_callback' => '__return_true',
+            'callback' => [$this, 'api_delete_message'],
+        ]);
         register_rest_route('ark-push/v1', '/unregister', [
             'methods' => WP_REST_Server::CREATABLE,
             'permission_callback' => '__return_true',
@@ -1487,11 +1505,16 @@ JS;
                      )
                  )
              )
-             ORDER BY id DESC LIMIT 5",
+             AND NOT EXISTS (
+                 SELECT 1 FROM {$this->dismissals} d
+                 WHERE d.message_id = {$this->messages}.id AND d.token_hash = %s
+             )
+             ORDER BY id DESC LIMIT 6",
             $inbox_since,
             $user_id,
             $installed_at,
-            $installed_at
+            $installed_at,
+            (string) $device->token_hash
         ), ARRAY_A);
         $items = [];
         foreach ((array) $rows as $row) {
@@ -1610,6 +1633,38 @@ JS;
             'click_recorded' => ($inserted === 1),
             'click_url' => (string) $message->click_url,
         ]);
+    }
+
+    /** Dismiss a notification for this app installation only. */
+    public function api_delete_message($request) {
+        $device = $this->device_from_request($request);
+        if (!$device) {
+            return new WP_Error('ark_push_device_required', 'This device is not registered.', ['status' => 401]);
+        }
+        $message_id = absint($request->get_param('message_id'));
+        if (!$message_id) {
+            return new WP_Error('ark_push_message_required', 'Notification ID is required.', ['status' => 400]);
+        }
+        global $wpdb;
+        $message = $wpdb->get_row($wpdb->prepare(
+            "SELECT id,recipient_user_id FROM {$this->messages} WHERE id = %d",
+            $message_id
+        ));
+        if (!$message) {
+            return new WP_Error('ark_push_message_missing', 'Notification was not found.', ['status' => 404]);
+        }
+        if ((int) $message->recipient_user_id > 0
+            && (int) $message->recipient_user_id !== (int) ($device->user_id ?? 0)) {
+            return new WP_Error('ark_push_message_forbidden', 'This notification belongs to a different customer account.', ['status' => 403]);
+        }
+        $saved = $wpdb->query($wpdb->prepare(
+            "INSERT IGNORE INTO {$this->dismissals} (message_id,token_hash,dismissed_at) VALUES (%d,%s,%s)",
+            $message_id, (string) $device->token_hash, current_time('mysql', true)
+        ));
+        if ($saved === false) {
+            return new WP_Error('ark_push_delete_failed', 'The notification could not be deleted. Please try again.', ['status' => 500]);
+        }
+        return rest_ensure_response(['success' => true, 'deleted' => true, 'message_id' => $message_id]);
     }
 
     public function api_unregister($request) {
