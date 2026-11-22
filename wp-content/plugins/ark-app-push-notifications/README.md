@@ -12,17 +12,18 @@ WordPress plugin and Flutter integration for sending image notifications to regi
 - WooCommerce order-created and order-status-changed events send customer-specific FCM notifications to the devices linked to that signed-in customer.
 - Order notifications also appear in that customer's in-app notification inbox and open the matching native Order Details screen.
 - FCM device tokens are linked to accounts only after the WordPress server verifies the ARK Native app JWT; customer IDs are never trusted from an app request body.
+- The app can dismiss a notification for one device without deleting the campaign or order alert for other recipients. Dismissals are scoped to the registered device token and customer ownership is checked for order alerts.
 
 - WordPress admin notification composer: title, message, Media Library image, click URL, optional offer countdown, immediate send, one-time scheduled delivery, and weekly recurring delivery.
 - Firebase Cloud Messaging HTTP v1 delivery using a service-account key stored only in WordPress options.
 - Batch delivery through WP-Cron to avoid large synchronous requests.
 - Registered device count, accepted/failed send counts, notification history and unique-device click counts.
-- Flutter notification inbox with the 5 newest messages, image cards and a live countdown only when a deadline was selected. Debug/connection diagnostics are not shown in the customer inbox.
+- Flutter notification inbox with the 6 newest messages, image cards and a live countdown only when a deadline was selected. Debug/connection diagnostics are not shown in the customer inbox.
 - Deep links: `ark://product/123`, `ark://orders`, `ark://notifications`; HTTPS and supported external app schemes open through Android.
 
 ## Install
 
-Plugin release: **1.3.0**. GlowHit companion APK: **1.0.20 (build 20)**.
+Plugin release: **1.3.1**. GlowHit companion APK: **1.0.20 (build 20)**.
 
 1. Upload and activate this plugin from **WordPress Admin → Plugins → Add Plugin → Upload Plugin**.
 2. Confirm the site is HTTPS and WordPress cron can run.
