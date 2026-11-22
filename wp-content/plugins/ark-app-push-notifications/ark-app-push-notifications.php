@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Push Notifications
  * Description: Send image notifications and timed sale alerts to registered ARK Native Android app installs, with delivery and click analytics.
- * Version: 1.3.2
+ * Version: 1.3.3
  * Author: ARK
  * Requires Plugins: woocommerce
  * Requires PHP: 7.4
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 }
 
 final class ARK_App_Push_Notifications {
-    const VERSION = '1.3.2';
+    const VERSION = '1.3.3';
     const OPTION = 'ark_app_push_settings';
     const CRON_HOOK = 'ark_app_push_send_batch';
     const SCHEDULE_HOOK = 'ark_app_push_send_scheduled';
@@ -764,6 +764,23 @@ JS;
             $user_id
         ));
         $now = current_time('mysql', true);
+
+        // WooCommerce can fire creation/update/status hooks more than once
+        // during checkout and payment callbacks. Make order-event creation
+        // idempotent at the database boundary as well as using order meta.
+        // The same order + event + exact copy within ten minutes is one event.
+        $duplicate_id = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM {$this->messages}
+             WHERE recipient_user_id = %d
+               AND target_type = 'order' AND target_id = %d
+               AND message_type = %s AND title = %s AND body = %s
+               AND created_at >= DATE_SUB(%s, INTERVAL 10 MINUTE)
+             ORDER BY id DESC LIMIT 1",
+            $user_id, $order_id, sanitize_key($message_type),
+            sanitize_text_field($title), sanitize_textarea_field($body), $now
+        ));
+        if ($duplicate_id > 0) return true;
+
         // Keep the order event until a customer device is linked. This avoids
         // marking it as sent (and hiding it from the inbox) when the customer
         // signs in or grants notification permission a little later.
