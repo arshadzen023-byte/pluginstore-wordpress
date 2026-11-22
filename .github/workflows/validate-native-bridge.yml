@@ -1,8 +1,11 @@
-name: Validate ARK Native API Bridge
+name: Validate and Package ARK GlowHit Native Commerce Bridge
 
 on:
   push:
-    branches: ['fix/glowhit-customer-orders-payment-2026-11-22']
+    branches: ['release/**', 'fix/**']
+    paths:
+      - 'wp-content/plugins/ark-native-api-bridge/**'
+      - '.github/workflows/validate-native-bridge.yml'
   pull_request:
     branches: [main]
     paths:
@@ -11,10 +14,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  validate:
+  validate-and-package:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,15 +28,35 @@ jobs:
           tools: none
       - name: PHP syntax check
         run: php -l wp-content/plugins/ark-native-api-bridge/ark-native-api-bridge.php
-      - name: Package WordPress plugin
+      - name: Validate Flutter API contract routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE=wp-content/plugins/ark-native-api-bridge/ark-native-api-bridge.php
+          for route in "/health" "/auth/login" "/customer/login" "/customer/me" "/customer/orders" "/customer/addresses" "/orders/attach" "/payment/config" "/payment/upi-submit"; do
+            grep -Fq "'${route}'" "$FILE" || { echo "Missing required route: $route"; exit 1; }
+          done
+          echo "All required native API routes are registered."
+      - name: Package installable WordPress plugin
         run: |
           mkdir -p dist
           cd wp-content/plugins
-          zip -r ../../dist/ark-native-api-bridge-1.0.4.zip ark-native-api-bridge
+          zip -r ../../dist/ark-glowhit-native-commerce-bridge-2.1.0.zip ark-native-api-bridge
+          unzip -t ../../dist/ark-glowhit-native-commerce-bridge-2.1.0.zip
       - name: Upload installable plugin ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: ark-native-api-bridge-1.0.4
-          path: dist/ark-native-api-bridge-1.0.4.zip
+          name: ark-glowhit-native-commerce-bridge-2.1.0
+          path: dist/ark-glowhit-native-commerce-bridge-2.1.0.zip
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+      - name: Publish GitHub release ZIP
+        if: github.ref == 'refs/heads/release/ark-glowhit-native-commerce-bridge-2.1.0'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ark-glowhit-native-commerce-bridge-2.1.0
+          name: ARK GlowHit Native Commerce Bridge 2.1.0
+          prerelease: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: dist/ark-glowhit-native-commerce-bridge-2.1.0.zip
