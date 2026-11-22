@@ -688,6 +688,7 @@ final class ARK_Native_API_Bridge {
         }
 
         $date = $order->get_date_created();
+        $modified = $order->get_date_modified();
         $status = $order->get_status();
         // Customer cancellation remains available until fulfilment is shipped.
         // Paid orders can be cancelled before shipment, but any captured payment
@@ -703,6 +704,7 @@ final class ARK_Native_API_Bridge {
             'status_key' => $status,
             'date' => $date ? $date->date(DATE_ATOM) : '',
             'date_created' => $date ? $date->date(DATE_ATOM) : '',
+            'date_modified' => $modified ? $modified->date(DATE_ATOM) : '',
             'payment_status' => $order->is_paid() ? 'Paid' : (in_array($status, ['pending', 'on-hold'], true) ? 'Awaiting verification' : ($status === 'refunded' ? 'Refunded' : 'Unpaid')),
             'return_request_status' => (string) $order->get_meta('_ark_return_request_status', true),
             'refund_review_required' => $order->get_meta('_ark_refund_review_required', true) === 'yes',
@@ -755,40 +757,61 @@ final class ARK_Native_API_Bridge {
                 ])),
             ];
             $payload['customer_note'] = $order->get_customer_note();
-            $payment_done = in_array($status, ['processing', 'shipped', 'completed'], true);
-            $processing_done = in_array($status, ['shipped', 'completed'], true);
-            $shipped_done = $status === 'completed';
+            // Include custom WooCommerce fulfilment statuses in the same ordered
+            // customer timeline used by the native app.
+            $confirmed_done = in_array($status, ['confirmed', 'processing', 'shipped', 'out-of-delivery', 'completed'], true);
+            $processing_done = in_array($status, ['processing', 'shipped', 'out-of-delivery', 'completed'], true);
+            $shipped_done = in_array($status, ['shipped', 'out-of-delivery', 'completed'], true);
+            $out_for_delivery_done = in_array($status, ['out-of-delivery', 'completed'], true);
+            $status_times = [];
+            if (function_exists('wc_get_order_notes')) {
+                $notes = wc_get_order_notes(['order_id' => $order->get_id(), 'type' => 'internal', 'limit' => 100]);
+                foreach ($notes as $note) {
+                    $content = wp_strip_all_tags((string) ($note->content ?? ''));
+                    if (!preg_match('/status changed from .+? to (.+?)(?:\\.|$)/i', $content, $matches)) {
+                        continue;
+                    }
+                    $slug = sanitize_title(trim($matches[1]));
+                    $key = [
+                        'pending-payment' => 'payment',
+                        'on-hold' => 'payment',
+                        'confirmed' => 'confirmed',
+                        'processing' => 'processing',
+                        'shipped' => 'shipped',
+                        'out-of-delivery' => 'out-for-delivery',
+                        'out-for-delivery' => 'out-for-delivery',
+                        'completed' => 'delivered',
+                        'cancelled' => 'cancelled',
+                        'canceled' => 'cancelled',
+                        'failed' => 'failed',
+                        'refunded' => 'refunded',
+                    ][$slug] ?? '';
+                    if ($key !== '') {
+                        $note_date = $note->date_created ?? '';
+                        if (is_object($note_date) && method_exists($note_date, 'date')) {
+                            $note_date = $note_date->date(DATE_ATOM);
+                        }
+                        if (is_string($note_date) && $note_date !== '') {
+                            $status_times[$key] = $note_date;
+                        }
+                    }
+                }
+            }
+            $created_at = $date ? $date->date(DATE_ATOM) : '';
+            $modified_at = $modified ? $modified->date(DATE_ATOM) : '';
             $payload['timeline'] = [
-                ['key' => 'placed', 'label' => 'Order placed', 'done' => true, 'active' => false],
-                [
-                    'key' => 'payment',
-                    'label' => in_array($status, ['pending', 'on-hold'], true) ? 'Payment verification pending' : 'Payment update',
-                    'done' => $payment_done,
-                    'active' => in_array($status, ['pending', 'on-hold'], true),
-                ],
-                [
-                    'key' => 'processing',
-                    'label' => 'Processing',
-                    'done' => $processing_done,
-                    'active' => $status === 'processing',
-                ],
-                [
-                    'key' => 'shipped',
-                    'label' => 'Shipped',
-                    'done' => $shipped_done,
-                    'active' => $status === 'shipped',
-                ],
-                [
-                    'key' => 'completed',
-                    'label' => 'Completed',
-                    'done' => $status === 'completed',
-                    'active' => false,
-                ],
+                ['key' => 'placed', 'label' => 'Order placed', 'done' => true, 'active' => false, 'date' => $created_at],
+                ['key' => 'confirmed', 'label' => 'Confirmed', 'done' => $confirmed_done, 'active' => $status === 'confirmed', 'date' => $status_times['confirmed'] ?? ''],
+                ['key' => 'processing', 'label' => 'Processing', 'done' => $processing_done, 'active' => $status === 'processing', 'date' => $status_times['processing'] ?? ''],
+                ['key' => 'shipped', 'label' => 'Shipped', 'done' => $shipped_done, 'active' => $status === 'shipped', 'date' => $status_times['shipped'] ?? ''],
+                ['key' => 'out-for-delivery', 'label' => 'Out for delivery', 'done' => $out_for_delivery_done, 'active' => $status === 'out-of-delivery', 'date' => $status_times['out-for-delivery'] ?? ($status === 'out-of-delivery' ? $modified_at : '')],
+                ['key' => 'delivered', 'label' => 'Delivered', 'done' => $status === 'completed', 'active' => false, 'date' => $status_times['delivered'] ?? ($status === 'completed' ? $modified_at : '')],
             ];
             if ($status === 'cancelled' || $status === 'refunded' || $status === 'failed') {
+                $terminal_key = $status === 'cancelled' ? 'cancelled' : $status;
                 $payload['timeline'] = [
-                    ['key' => 'placed', 'label' => 'Order placed', 'done' => true, 'active' => false],
-                    ['key' => 'cancelled', 'label' => wc_get_order_status_name($status), 'done' => true, 'active' => false],
+                    ['key' => 'placed', 'label' => 'Order placed', 'done' => true, 'active' => false, 'date' => $created_at],
+                    ['key' => $terminal_key, 'label' => wc_get_order_status_name($status), 'done' => true, 'active' => true, 'date' => $status_times[$terminal_key] ?? $modified_at],
                 ];
             }
         }
