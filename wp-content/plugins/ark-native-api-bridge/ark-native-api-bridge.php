@@ -768,7 +768,7 @@ final class ARK_Native_API_Bridge {
                 $notes = wc_get_order_notes(['order_id' => $order->get_id(), 'type' => 'internal', 'limit' => 100]);
                 foreach ($notes as $note) {
                     $content = wp_strip_all_tags((string) ($note->content ?? ''));
-                    if (!preg_match('/status changed from .+? to (.+?)(?:\\.|$)/i', $content, $matches)) {
+                    if (!preg_match('/status changed from .+? to (.+?)(?:[.]|$)/i', $content, $matches)) {
                         continue;
                     }
                     $slug = sanitize_title(trim($matches[1]));
