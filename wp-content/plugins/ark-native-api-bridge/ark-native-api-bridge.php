@@ -889,7 +889,26 @@ final class ARK_Native_API_Bridge {
             ];
         }
 
-        $upi_enabled = ($settings['enabled'] ?? 'no') === 'yes' && !empty($settings['vpa']) && ($settings['hide_on_mobile'] ?? 'no') !== 'yes';
+        // COD can be omitted by get_available_payment_gateways() on a fresh
+        // REST request before WooCommerce has hydrated the customer/session.
+        // Use the saved gateway enable flag as a native selector fallback;
+        // checkout still validates actual gateway availability when the order is placed.
+        $cod_settings = get_option('woocommerce_cod_settings', []);
+        $cod_settings = is_array($cod_settings) ? $cod_settings : [];
+        $cod_enabled = ($cod_settings['enabled'] ?? 'no') === 'yes';
+        $cod_available = false;
+        foreach ($gateways as $gateway) {
+            if ($gateway['id'] === 'cod') $cod_available = true;
+        }
+        if ($cod_enabled && !$cod_available) {
+            $gateways[] = [
+                'id' => 'cod',
+                'title' => sanitize_text_field($cod_settings['title'] ?? 'Cash on Delivery'),
+                'description' => wp_strip_all_tags((string) ($cod_settings['description'] ?? 'Pay when your order is delivered.')),
+            ];
+        }
+
+        $upi_enabled = ($settings['enabled'] ?? 'no') === 'yes' && !empty($settings['vpa']) && ($settings['hide_on_mobile'] ?? 'no') !== 'yes' && get_woocommerce_currency() === 'INR';
         $upi_available = false;
         foreach ($gateways as $gateway) {
             if ($gateway['id'] === 'wc-upi') $upi_available = true;
@@ -1003,17 +1022,22 @@ final class ARK_Native_API_Bridge {
         if ($utr !== '') {
             $order->set_transaction_id($utr);
         }
-        $order->update_meta_data('_upiwc_order_paid', 'yes');
-        $status = sanitize_key($settings['payment_status'] ?? 'on-hold');
-        $allowed = ['pending', 'on-hold', 'processing', 'completed'];
-        if (!in_array($status, $allowed, true)) $status = 'on-hold';
-
+        // A customer-entered UTR is only a claim, not proof of a settled payment.
+        // Keep the gateway's paid flag explicitly false until an administrator
+        // verifies the transaction in WooCommerce.
+        $order->update_meta_data('_upiwc_order_paid', 'no');
+        $order->update_meta_data('_ark_upi_verification_status', 'pending');
         $order->add_order_note(
-            'UPI UTR submitted from the ARK native app: ' . $utr . '. Payment is awaiting store-owner verification.',
+            'UPI UTR submitted from the ARK native app: ' . $utr . '. Payment is awaiting manual store-owner verification.',
             false
         );
-        $order->update_status($status);
-        wc_reduce_stock_levels($order_id);
+        // Never honor the gateway's optional Processing/Completed setting here:
+        // the native submission endpoint cannot independently verify bank payment.
+        if (!$order->has_status(['pending', 'on-hold'])) {
+            $order->update_status('on-hold');
+        } elseif ($order->has_status('pending')) {
+            $order->update_status('on-hold');
+        }
         $order->save();
 
         return rest_ensure_response([
