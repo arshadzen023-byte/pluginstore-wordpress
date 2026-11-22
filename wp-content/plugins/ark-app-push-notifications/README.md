@@ -23,7 +23,7 @@ WordPress plugin and Flutter integration for sending image notifications to regi
 
 ## Install
 
-Plugin release: **1.3.1**. GlowHit companion APK: **1.0.20 (build 20)**.
+Plugin release: **1.3.2**. GlowHit companion APK: **1.0.20 (build 20)**.
 
 1. Upload and activate this plugin from **WordPress Admin → Plugins → Add Plugin → Upload Plugin**.
 2. Confirm the site is HTTPS and WordPress cron can run.
