@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK Native App API Bridge
  * Description: Secure native app login, registration, profile, wishlist and customer orders API for ARK Native App.
- * Version: 1.0.3
+ * Version: 1.0.4
  * Author: ARK
  * Requires PHP: 8.0
  * Requires Plugins: woocommerce
@@ -1055,7 +1055,7 @@ final class ARK_Native_API_Bridge {
             return new WP_Error('ark_return_duplicate', 'A return request is already awaiting review.', ['status' => 409]);
         }
         $reason = sanitize_textarea_field((string) $request->get_param('reason'));
-        if (mb_strlen($reason) < 5) return new WP_Error('ark_return_reason', 'Please enter a return reason (at least 5 characters).', ['status' => 400]);
+        if ((function_exists('mb_strlen') ? mb_strlen($reason) : strlen($reason)) < 5) return new WP_Error('ark_return_reason', 'Please enter a return reason (at least 5 characters).', ['status' => 400]);
         $order->update_meta_data('_ark_return_request_status', 'pending');
         $order->update_meta_data('_ark_return_request_reason', $reason);
         $order->add_order_note('Customer requested a return: ' . $reason, false);
