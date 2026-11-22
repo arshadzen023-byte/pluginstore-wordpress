@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: ARK Native App API Bridge
- * Description: Secure native app login, registration, profile, wishlist and customer orders API for ARK Native App.
- * Version: 1.0.4
+ * Plugin Name: ARK GlowHit Native Commerce Bridge
+ * Description: Unified secure native commerce API for GlowHit Flutter: customer auth, addresses, orders, wishlist, payment configuration and UPI proof submission.
+ * Version: 2.1.0
  * Author: ARK
  * Requires PHP: 8.0
  * Requires Plugins: woocommerce
@@ -19,6 +19,12 @@ final class ARK_Native_API_Bridge {
     }
 
     public function routes() {
+        // Public diagnostic endpoint: confirms that this exact API bridge is loaded.
+        register_rest_route(self::NS, '/health', [
+            'methods' => 'GET',
+            'callback' => [$this, 'health'],
+            'permission_callback' => '__return_true',
+        ]);
         register_rest_route(self::NS, '/auth/login', [
             'methods' => 'POST',
             'callback' => [$this, 'login'],
@@ -103,6 +109,13 @@ final class ARK_Native_API_Bridge {
             'callback' => [$this, 'attach_order'],
             'permission_callback' => [$this, 'authorize'],
         ]);
+
+        // Backward-compatible alias for earlier GlowHit app builds.
+        register_rest_route(self::NS, '/customer/orders/attach', [
+            'methods' => 'POST',
+            'callback' => [$this, 'attach_order'],
+            'permission_callback' => [$this, 'authorize'],
+        ]);
         register_rest_route(self::NS, '/orders/(?P<id>\d+)', [
             'methods' => 'GET',
             'callback' => [$this, 'order_detail'],
@@ -133,6 +146,26 @@ final class ARK_Native_API_Bridge {
             'methods' => 'POST',
             'callback' => [$this, 'submit_upi_payment'],
             'permission_callback' => '__return_true',
+        ]);
+    }
+
+    public function health($request) {
+        $woocommerce_active = class_exists('WooCommerce') && function_exists('WC') && WC();
+        return rest_ensure_response([
+            'success' => true,
+            'plugin' => 'ARK GlowHit Native Commerce Bridge',
+            'version' => '2.1.0',
+            'woocommerce_active' => (bool) $woocommerce_active,
+            'currency' => function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : '',
+            'routes' => [
+                'auth_login' => rest_url(self::NS . '/auth/login'),
+                'customer_login_compat' => rest_url(self::NS . '/customer/login'),
+                'customer_addresses' => rest_url(self::NS . '/customer/addresses'),
+                'customer_orders' => rest_url(self::NS . '/customer/orders'),
+                'order_attach' => rest_url(self::NS . '/orders/attach'),
+                'payment_config' => rest_url(self::NS . '/payment/config'),
+                'upi_submit' => rest_url(self::NS . '/payment/upi-submit'),
+            ],
         ]);
     }
 
