@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Push Notifications
  * Description: Send image notifications and timed sale alerts to registered ARK Native Android app installs, with delivery and click analytics.
- * Version: 1.3.1
+ * Version: 1.3.2
  * Author: ARK
  * Requires Plugins: woocommerce
  * Requires PHP: 7.4
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 }
 
 final class ARK_App_Push_Notifications {
-    const VERSION = '1.3.1';
+    const VERSION = '1.3.2';
     const OPTION = 'ark_app_push_settings';
     const CRON_HOOK = 'ark_app_push_send_batch';
     const SCHEDULE_HOOK = 'ark_app_push_send_scheduled';
@@ -773,7 +773,7 @@ JS;
             'title' => sanitize_text_field($title),
             'body' => sanitize_textarea_field($body),
             'image_url' => '',
-            'click_url' => 'ark://order/' . $order_id,
+            'click_url' => 'ark://orders/' . $order_id,
             'target_type' => 'order',
             'target_id' => $order_id,
             'message_type' => sanitize_key($message_type),
@@ -1408,7 +1408,7 @@ JS;
         }
 
         $existing_row = $existing_id > 0
-            ? $wpdb->get_row($wpdb->prepare("SELECT user_id,account_linked_at,created_at FROM {$this->devices} WHERE id = %d", $existing_id))
+            ? $wpdb->get_row($wpdb->prepare("SELECT user_id,account_linked_at,created_at,token_hash FROM {$this->devices} WHERE id = %d", $existing_id))
             : null;
         $previous_user_id = (int) ($existing_row->user_id ?? 0);
         $account_linked_at = $existing_row->account_linked_at ?? null;
@@ -1465,6 +1465,19 @@ JS;
             return new WP_Error('ark_push_register_database', 'The device registration could not be saved. Check the ARK Push device table and database permissions.', ['status' => 500]);
         }
 
+        // Dismissals belong to the app installation, not to a transient FCM
+        // token. Preserve delete state when Firebase rotates the token.
+        $previous_token_hash = (string) ($existing_row->token_hash ?? '');
+        if ($previous_token_hash !== '' && !hash_equals($previous_token_hash, $hash)) {
+            $wpdb->query($wpdb->prepare(
+                "INSERT IGNORE INTO {$this->dismissals} (message_id,token_hash,dismissed_at)
+                 SELECT message_id,%s,dismissed_at FROM {$this->dismissals} WHERE token_hash = %s",
+                $hash,
+                $previous_token_hash
+            ));
+            $wpdb->delete($this->dismissals, ['token_hash' => $previous_token_hash], ['%s']);
+        }
+
         if ($user_id > 0) {
             $this->resume_waiting_order_notifications($user_id);
         }
@@ -1495,15 +1508,12 @@ JS;
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT m.id,m.title,m.body,m.image_url,m.click_url,m.target_type,m.target_id,m.message_type,m.status,m.countdown_end,m.success_count,m.click_count,m.sent_at
              FROM {$this->messages} m
-             WHERE (
-                 (m.recipient_user_id = 0 AND m.status = 'sent' AND m.sent_at IS NOT NULL AND m.sent_at >= %s)
+             WHERE TRIM(m.title) <> '' AND TRIM(m.body) <> '' AND m.status = 'sent' AND m.sent_at IS NOT NULL AND (
+                 (m.recipient_user_id = 0 AND m.sent_at >= %s)
                  OR (
                      m.recipient_user_id = %d
                      AND m.message_type IN ('order_placed','order_status')
-                     AND (
-                         (m.status = 'sent' AND m.sent_at IS NOT NULL AND m.sent_at >= %s)
-                         OR (m.status IN ('queued','sending','waiting_device','failed') AND m.created_at >= %s)
-                     )
+                     AND m.sent_at >= %s
                  )
              )
              AND NOT EXISTS (
