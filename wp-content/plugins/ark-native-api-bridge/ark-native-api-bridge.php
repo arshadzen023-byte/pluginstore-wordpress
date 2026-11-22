@@ -103,6 +103,13 @@ final class ARK_Native_API_Bridge {
             'callback' => [$this, 'attach_order'],
             'permission_callback' => [$this, 'authorize'],
         ]);
+
+        // Backward-compatible alias for earlier GlowHit app builds.
+        register_rest_route(self::NS, '/customer/orders/attach', [
+            'methods' => 'POST',
+            'callback' => [$this, 'attach_order'],
+            'permission_callback' => [$this, 'authorize'],
+        ]);
         register_rest_route(self::NS, '/orders/(?P<id>\d+)', [
             'methods' => 'GET',
             'callback' => [$this, 'order_detail'],
