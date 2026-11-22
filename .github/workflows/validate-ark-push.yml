@@ -1,0 +1,38 @@
+name: Validate ARK Push Notifications
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'wp-content/plugins/ark-app-push-notifications/**'
+      - '.github/workflows/validate-ark-push.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'wp-content/plugins/ark-app-push-notifications/**'
+      - '.github/workflows/validate-ark-push.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: none
+      - name: PHP syntax check
+        run: php -l wp-content/plugins/ark-app-push-notifications/ark-app-push-notifications.php
+      - name: Package plugin
+        run: |
+          mkdir -p dist
+          cd wp-content/plugins
+          zip -r ../../../dist/ark-app-push-notifications-1.3.1.zip ark-app-push-notifications
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ark-app-push-notifications-1.3.1
+          path: dist/ark-app-push-notifications-1.3.1.zip
+          if-no-files-found: error
+          retention-days: 14
