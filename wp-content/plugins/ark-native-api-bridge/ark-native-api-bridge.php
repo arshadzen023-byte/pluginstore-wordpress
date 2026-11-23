@@ -137,6 +137,18 @@ final class ARK_Native_API_Bridge {
             'permission_callback' => [$this, 'authorize'],
         ]);
 
+        // Native ARK Designer bridge. Only WordPress administrators may edit or publish
+        // the global app configuration; customer JWTs alone never grant design access.
+        register_rest_route(self::NS, '/designer/config', [
+            ['methods' => 'GET', 'callback' => [$this, 'designer_config_proxy'], 'permission_callback' => [$this, 'authorize_designer_admin']],
+            ['methods' => 'POST', 'callback' => [$this, 'designer_config_proxy'], 'permission_callback' => [$this, 'authorize_designer_admin']],
+        ]);
+        register_rest_route(self::NS, '/designer/media', [
+            'methods' => 'GET',
+            'callback' => [$this, 'designer_media_proxy'],
+            'permission_callback' => [$this, 'authorize_designer_admin'],
+        ]);
+
         register_rest_route(self::NS, '/payment/config', [
             'methods' => 'GET',
             'callback' => [$this, 'payment_config'],
@@ -226,6 +238,64 @@ final class ARK_Native_API_Bridge {
         wp_set_current_user($user_id);
         return true;
     }
+
+    public function authorize_designer_admin($request) {
+        $authorized = $this->authorize($request);
+        if (is_wp_error($authorized)) return $authorized;
+        if (!current_user_can('manage_options')) {
+            return new WP_Error('ark_designer_forbidden', 'ARK Designer is available only to an approved WordPress administrator account.', ['status' => 403]);
+        }
+        return true;
+    }
+
+    private function designer_proxy($route, $method, $params = []) {
+        if (!class_exists('ARK_App_Designer')) {
+            return new WP_Error('ark_designer_unavailable', 'ARK App Designer plugin is not active.', ['status' => 503]);
+        }
+        $inner = new WP_REST_Request($method, $route);
+        if ($method === 'GET') {
+            $inner->set_query_params($params);
+        } else {
+            $inner->set_header('content-type', 'application/json');
+            $inner->set_body(wp_json_encode($params));
+        }
+        $response = rest_do_request($inner);
+        if (is_wp_error($response)) return $response;
+        $status = (int) $response->get_status();
+        $data = $response->get_data();
+        if ($status >= 400) {
+            $message = is_array($data) ? (string) ($data['message'] ?? 'Designer request failed.') : 'Designer request failed.';
+            return new WP_Error('ark_designer_request_failed', $message, ['status' => $status, 'response' => $data]);
+        }
+        return rest_ensure_response($data);
+    }
+
+    public function designer_config_proxy($request) {
+        if ($request->get_method() === 'GET') {
+            return $this->designer_proxy('/ark-designer/v1/studio/config', 'GET');
+        }
+        $body = $request->get_json_params();
+        if (!is_array($body)) {
+            return new WP_Error('ark_designer_invalid', 'Designer configuration must be a JSON object.', ['status' => 400]);
+        }
+        $config = is_array($body['config'] ?? null) ? $body['config'] : $body;
+        if (!is_array($config['pages'] ?? null)) {
+            return new WP_Error('ark_designer_invalid', 'Designer configuration is missing its pages object.', ['status' => 400]);
+        }
+        $status = sanitize_key($body['status'] ?? 'published');
+        $target = $status === 'draft' ? 'draft' : 'publish';
+        return $this->designer_proxy('/ark-designer/v1/studio/' . $target, 'POST', $config);
+    }
+
+    public function designer_media_proxy($request) {
+        $params = [
+            'page' => max(1, absint($request->get_param('page'))),
+            'per_page' => min(60, max(1, absint($request->get_param('per_page') ?: 30))),
+            'search' => sanitize_text_field((string) $request->get_param('search')),
+        ];
+        return $this->designer_proxy('/ark-designer/v1/studio/media', 'GET', $params);
+    }
+
 
     private function user_payload($user) {
         return [
