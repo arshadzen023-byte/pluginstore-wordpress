@@ -331,8 +331,17 @@ final class ARK_Native_API_Bridge {
                 if (!is_array($component)) continue;
                 $layout = strtolower(trim((string) ($component['layout'] ?? '')));
                 $type = $layout_map[$layout] ?? '';
-                if ($type === '') continue;
                 $properties = is_array($component['properties'] ?? null) ? $component['properties'] : [];
+                if ($type === '') {
+                    // Keep native-visible sections that this editor does not yet
+                    // expose as editable Banner/Category/Product layouts.
+                    $section = $properties;
+                    $section['id'] = sanitize_key($component['id'] ?? ($properties['id'] ?? wp_generate_uuid4()));
+                    $section['title'] = sanitize_text_field($component['title'] ?? ($properties['title'] ?? 'Existing section'));
+                    $section['visible'] = !array_key_exists('enabled', $component) || !empty($component['enabled']);
+                    $sections[] = $section;
+                    continue;
+                }
                 $section = $properties;
                 $section['id'] = sanitize_key($component['id'] ?? wp_generate_uuid4());
                 $section['type'] = $type;
