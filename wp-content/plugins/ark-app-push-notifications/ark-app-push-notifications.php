@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Push Notifications
  * Description: Send image notifications and timed sale alerts to registered ARK Native Android app installs, with delivery and click analytics.
- * Version: 1.3.3
+ * Version: 1.3.1
  * Author: ARK
  * Requires Plugins: woocommerce
  * Requires PHP: 7.4
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 }
 
 final class ARK_App_Push_Notifications {
-    const VERSION = '1.3.3';
+    const VERSION = '1.3.1';
     const OPTION = 'ark_app_push_settings';
     const CRON_HOOK = 'ark_app_push_send_batch';
     const SCHEDULE_HOOK = 'ark_app_push_send_scheduled';
@@ -63,7 +63,6 @@ final class ARK_App_Push_Notifications {
         $devices = $wpdb->prefix . 'ark_push_devices';
         $messages = $wpdb->prefix . 'ark_push_messages';
         $clicks = $wpdb->prefix . 'ark_push_clicks';
-        $dismissals = $wpdb->prefix . 'ark_push_dismissals';
 
         dbDelta("CREATE TABLE {$devices} (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -128,7 +127,7 @@ final class ARK_App_Push_Notifications {
             KEY message_id (message_id)
         ) {$charset};");
 
-        // Per-device dismissals do not delete a campaign for other recipients.
+        $dismissals = $wpdb->prefix . 'ark_push_dismissals';
         dbDelta("CREATE TABLE {$dismissals} (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             message_id bigint(20) unsigned NOT NULL,
@@ -764,23 +763,6 @@ JS;
             $user_id
         ));
         $now = current_time('mysql', true);
-
-        // WooCommerce can fire creation/update/status hooks more than once
-        // during checkout and payment callbacks. Make order-event creation
-        // idempotent at the database boundary as well as using order meta.
-        // The same order + event + exact copy within ten minutes is one event.
-        $duplicate_id = (int) $wpdb->get_var($wpdb->prepare(
-            "SELECT id FROM {$this->messages}
-             WHERE recipient_user_id = %d
-               AND target_type = 'order' AND target_id = %d
-               AND message_type = %s AND title = %s AND body = %s
-               AND created_at >= DATE_SUB(%s, INTERVAL 10 MINUTE)
-             ORDER BY id DESC LIMIT 1",
-            $user_id, $order_id, sanitize_key($message_type),
-            sanitize_text_field($title), sanitize_textarea_field($body), $now
-        ));
-        if ($duplicate_id > 0) return true;
-
         // Keep the order event until a customer device is linked. This avoids
         // marking it as sent (and hiding it from the inbox) when the customer
         // signs in or grants notification permission a little later.
@@ -790,7 +772,7 @@ JS;
             'title' => sanitize_text_field($title),
             'body' => sanitize_textarea_field($body),
             'image_url' => '',
-            'click_url' => 'ark://orders/' . $order_id,
+            'click_url' => 'ark://order/' . $order_id,
             'target_type' => 'order',
             'target_id' => $order_id,
             'message_type' => sanitize_key($message_type),
@@ -1186,11 +1168,6 @@ JS;
             'permission_callback' => '__return_true',
             'callback' => [$this, 'api_messages'],
         ]);
-        register_rest_route('ark-push/v1', '/messages/delete', [
-            'methods' => WP_REST_Server::CREATABLE,
-            'permission_callback' => '__return_true',
-            'callback' => [$this, 'api_delete_message'],
-        ]);
         register_rest_route('ark-push/v1', '/diagnostics', [
             'methods' => WP_REST_Server::READABLE,
             'permission_callback' => '__return_true',
@@ -1200,6 +1177,11 @@ JS;
             'methods' => WP_REST_Server::CREATABLE,
             'permission_callback' => '__return_true',
             'callback' => [$this, 'api_click'],
+        ]);
+        register_rest_route('ark-push/v1', '/messages/delete', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'permission_callback' => '__return_true',
+            'callback' => [$this, 'api_delete_message'],
         ]);
         register_rest_route('ark-push/v1', '/unregister', [
             'methods' => WP_REST_Server::CREATABLE,
@@ -1425,7 +1407,7 @@ JS;
         }
 
         $existing_row = $existing_id > 0
-            ? $wpdb->get_row($wpdb->prepare("SELECT user_id,account_linked_at,created_at,token_hash FROM {$this->devices} WHERE id = %d", $existing_id))
+            ? $wpdb->get_row($wpdb->prepare("SELECT user_id,account_linked_at,created_at FROM {$this->devices} WHERE id = %d", $existing_id))
             : null;
         $previous_user_id = (int) ($existing_row->user_id ?? 0);
         $account_linked_at = $existing_row->account_linked_at ?? null;
@@ -1482,19 +1464,6 @@ JS;
             return new WP_Error('ark_push_register_database', 'The device registration could not be saved. Check the ARK Push device table and database permissions.', ['status' => 500]);
         }
 
-        // Dismissals belong to the app installation, not to a transient FCM
-        // token. Preserve delete state when Firebase rotates the token.
-        $previous_token_hash = (string) ($existing_row->token_hash ?? '');
-        if ($previous_token_hash !== '' && !hash_equals($previous_token_hash, $hash)) {
-            $wpdb->query($wpdb->prepare(
-                "INSERT IGNORE INTO {$this->dismissals} (message_id,token_hash,dismissed_at)
-                 SELECT message_id,%s,dismissed_at FROM {$this->dismissals} WHERE token_hash = %s",
-                $hash,
-                $previous_token_hash
-            ));
-            $wpdb->delete($this->dismissals, ['token_hash' => $previous_token_hash], ['%s']);
-        }
-
         if ($user_id > 0) {
             $this->resume_waiting_order_notifications($user_id);
         }
@@ -1523,25 +1492,29 @@ JS;
         $installed_at = (string) ($device->created_at ?? '');
         $inbox_since = (string) (($device->account_linked_at ?? '') ?: $installed_at);
         $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT m.id,m.title,m.body,m.image_url,m.click_url,m.target_type,m.target_id,m.message_type,m.status,m.countdown_end,m.success_count,m.click_count,m.sent_at
-             FROM {$this->messages} m
-             WHERE TRIM(m.title) <> '' AND TRIM(m.body) <> '' AND m.status = 'sent' AND m.sent_at IS NOT NULL AND (
-                 (m.recipient_user_id = 0 AND m.sent_at >= %s)
+            "SELECT id,title,body,image_url,click_url,target_type,target_id,message_type,status,countdown_end,success_count,click_count,sent_at
+             FROM {$this->messages}
+             WHERE (
+                 (recipient_user_id = 0 AND status = 'sent' AND sent_at IS NOT NULL AND sent_at >= %s)
                  OR (
-                     m.recipient_user_id = %d
-                     AND m.message_type IN ('order_placed','order_status')
-                     AND m.sent_at >= %s
+                     recipient_user_id = %d
+                     AND message_type IN ('order_placed','order_status')
+                     AND (
+                         (status = 'sent' AND sent_at IS NOT NULL AND sent_at >= %s)
+                         OR (status IN ('queued','sending','waiting_device','failed') AND created_at >= %s)
+                     )
                  )
              )
              AND NOT EXISTS (
                  SELECT 1 FROM {$this->dismissals} d
-                 WHERE d.message_id = m.id AND d.token_hash = %s
+                 WHERE d.message_id = {$this->messages}.id AND d.token_hash = %s
              )
-             ORDER BY m.id DESC LIMIT 6",
+             ORDER BY id DESC LIMIT 6",
             $inbox_since,
             $user_id,
             $installed_at,
-            $device->token_hash
+            $installed_at,
+            (string) $device->token_hash
         ), ARRAY_A);
         $items = [];
         foreach ((array) $rows as $row) {
@@ -1552,51 +1525,6 @@ JS;
             $items[] = $row;
         }
         return rest_ensure_response(['messages' => $items]);
-    }
-
-    /**
-     * Dismiss a notification for this registered installation only.
-     * The device token identifies the caller; request-supplied customer IDs
-     * are never trusted. Customer-specific order alerts cannot be dismissed
-     * from a device linked to a different customer.
-     */
-    public function api_delete_message($request) {
-        $device = $this->device_from_request($request);
-        if (!$device) {
-            return new WP_Error('ark_push_device_required', 'This device is not registered.', ['status' => 401]);
-        }
-
-        $message_id = absint($request->get_param('message_id'));
-        if (!$message_id) {
-            return new WP_Error('ark_push_message_required', 'Notification ID is required.', ['status' => 400]);
-        }
-
-        global $wpdb;
-        $message = $wpdb->get_row($wpdb->prepare(
-            "SELECT id,recipient_user_id FROM {$this->messages} WHERE id = %d LIMIT 1",
-            $message_id
-        ));
-        if (!$message) {
-            return new WP_Error('ark_push_message_missing', 'Notification was not found.', ['status' => 404]);
-        }
-
-        $recipient_user_id = (int) $message->recipient_user_id;
-        $device_user_id = (int) ($device->user_id ?? 0);
-        if ($recipient_user_id > 0 && $recipient_user_id !== $device_user_id) {
-            return new WP_Error('ark_push_message_forbidden', 'This notification belongs to a different customer account.', ['status' => 403]);
-        }
-
-        $saved = $wpdb->query($wpdb->prepare(
-            "INSERT IGNORE INTO {$this->dismissals} (message_id,token_hash,dismissed_at) VALUES (%d,%s,%s)",
-            $message_id,
-            $device->token_hash,
-            current_time('mysql', true)
-        ));
-        if ($saved === false) {
-            return new WP_Error('ark_push_dismiss_failed', 'The notification could not be deleted. Please retry.', ['status' => 500]);
-        }
-
-        return rest_ensure_response(['success' => true, 'message_id' => $message_id]);
     }
 
     public function api_diagnostics($request) {
@@ -1705,6 +1633,38 @@ JS;
             'click_recorded' => ($inserted === 1),
             'click_url' => (string) $message->click_url,
         ]);
+    }
+
+    /** Dismiss a notification for this app installation only. */
+    public function api_delete_message($request) {
+        $device = $this->device_from_request($request);
+        if (!$device) {
+            return new WP_Error('ark_push_device_required', 'This device is not registered.', ['status' => 401]);
+        }
+        $message_id = absint($request->get_param('message_id'));
+        if (!$message_id) {
+            return new WP_Error('ark_push_message_required', 'Notification ID is required.', ['status' => 400]);
+        }
+        global $wpdb;
+        $message = $wpdb->get_row($wpdb->prepare(
+            "SELECT id,recipient_user_id FROM {$this->messages} WHERE id = %d",
+            $message_id
+        ));
+        if (!$message) {
+            return new WP_Error('ark_push_message_missing', 'Notification was not found.', ['status' => 404]);
+        }
+        if ((int) $message->recipient_user_id > 0
+            && (int) $message->recipient_user_id !== (int) ($device->user_id ?? 0)) {
+            return new WP_Error('ark_push_message_forbidden', 'This notification belongs to a different customer account.', ['status' => 403]);
+        }
+        $saved = $wpdb->query($wpdb->prepare(
+            "INSERT IGNORE INTO {$this->dismissals} (message_id,token_hash,dismissed_at) VALUES (%d,%s,%s)",
+            $message_id, (string) $device->token_hash, current_time('mysql', true)
+        ));
+        if ($saved === false) {
+            return new WP_Error('ark_push_delete_failed', 'The notification could not be deleted. Please try again.', ['status' => 500]);
+        }
+        return rest_ensure_response(['success' => true, 'deleted' => true, 'message_id' => $message_id]);
     }
 
     public function api_unregister($request) {
