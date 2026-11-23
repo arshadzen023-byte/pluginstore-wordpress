@@ -1063,7 +1063,9 @@ final class ARK_Native_API_Bridge {
             }
             unset($existing);
             if (!$matched) {
-                $address['id'] = wp_generate_uuid4();
+                // Preserve the legacy WooCommerce default-address identity when
+                // a customer edits the address that was hydrated from their profile.
+                $address['id'] = ($id === 'default') ? 'default' : wp_generate_uuid4();
                 $addresses[] = $address;
             }
             update_user_meta($user_id, '_ark_native_saved_addresses', $addresses);
@@ -1085,13 +1087,37 @@ final class ARK_Native_API_Bridge {
 
         if ($method === 'DELETE') {
             $id = sanitize_text_field((string) $request->get_param('id'));
+            if ($id === '') {
+                return new WP_Error('ark_address_id_required', 'Address ID is required.', ['status' => 400]);
+            }
+
             $addresses = array_values(array_filter($addresses, function ($item) use ($id) {
                 return (string) ($item['id'] ?? '') !== $id;
             }));
+
+            // Persist an empty array too. Without this, deleting the final
+            // saved address would immediately re-add the WooCommerce profile
+            // address on the next GET, making Delete appear broken in the app.
             update_user_meta($user_id, '_ark_native_saved_addresses', $addresses);
+
+            // Keep the WooCommerce shipping profile aligned with the saved
+            // address list after a deletion. Billing remains intact for invoices.
+            if (function_exists('WC') && WC()) {
+                $customer = new WC_Customer($user_id);
+                $replacement = !empty($addresses) ? end($addresses) : null;
+                foreach (['first_name','last_name','company','address_1','address_2','city','state','postcode','country','phone'] as $field) {
+                    $value = is_array($replacement) ? (string) ($replacement[$field] ?? '') : '';
+                    $setter = 'set_shipping_' . $field;
+                    if (method_exists($customer, $setter)) {
+                        $customer->{$setter}($value);
+                    }
+                }
+                $customer->save();
+            }
         }
 
-        if (!$addresses && function_exists('WC') && WC()) {
+        $has_saved_address_meta = metadata_exists('user', $user_id, '_ark_native_saved_addresses');
+        if (!$addresses && !$has_saved_address_meta && function_exists('WC') && WC()) {
             $customer = new WC_Customer($user_id);
             $shipping = $customer->get_shipping();
             if (!empty($shipping['address_1'])) {
