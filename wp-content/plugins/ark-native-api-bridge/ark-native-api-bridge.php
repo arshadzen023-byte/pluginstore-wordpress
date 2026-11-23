@@ -74,6 +74,9 @@ final class ARK_Native_API_Bridge {
         register_rest_route(self::NS, '/customer/orders/(?P<id>\\d+)', [
             'methods' => 'GET', 'callback' => [$this, 'customer_order_detail_compat'], 'permission_callback' => [$this, 'authorize'],
         ]);
+        register_rest_route(self::NS, '/customer/orders/(?P<id>\\d+)/address', [
+            'methods' => 'PUT', 'callback' => [$this, 'update_order_shipping_address'], 'permission_callback' => [$this, 'authorize'],
+        ]);
         register_rest_route(self::NS, '/customer/orders/(?P<id>\\d+)/cancel', [
             'methods' => 'POST', 'callback' => [$this, 'cancel_order'], 'permission_callback' => [$this, 'authorize'],
         ]);
@@ -704,6 +707,7 @@ final class ARK_Native_API_Bridge {
         // is flagged for manual store refund review (no automatic refund is sent).
         $can_cancel = in_array($status, ['pending', 'on-hold', 'processing'], true)
             && !in_array($status, ['shipped', 'completed', 'cancelled', 'refunded', 'failed'], true);
+        $can_change_address = in_array($status, ['pending', 'on-hold'], true);
 
         $payload = [
             'id' => $order->get_id(),
@@ -726,6 +730,7 @@ final class ARK_Native_API_Bridge {
             'currency' => $order->get_currency(),
             'payment_method' => $order->get_payment_method_title(),
             'can_cancel' => $can_cancel,
+            'can_change_address' => $can_change_address,
             'items' => $items,
         ];
 
@@ -1110,6 +1115,50 @@ final class ARK_Native_API_Bridge {
             }
         }
         return rest_ensure_response($addresses);
+    }
+
+    public function update_order_shipping_address($request) {
+        $order = wc_get_order(absint($request['id']));
+        if (!$order) {
+            return new WP_Error('ark_order_not_found', 'Order was not found.', ['status' => 404]);
+        }
+
+        $user_id = get_current_user_id();
+        if ((int) $order->get_customer_id() !== $user_id) {
+            return new WP_Error('ark_order_forbidden', 'You cannot change the delivery address for this order.', ['status' => 403]);
+        }
+
+        // Address edits are allowed only before fulfilment begins. Once an
+        // order is processing/shipped, the store must handle address changes.
+        if (!in_array($order->get_status(), ['pending', 'on-hold'], true)) {
+            return new WP_Error(
+                'ark_order_address_locked',
+                'The delivery address can only be changed while the order is pending or on hold.',
+                ['status' => 409]
+            );
+        }
+
+        $data = $request->get_json_params();
+        $data = is_array($data) ? $data : [];
+        $address = [];
+        foreach (['first_name','last_name','company','address_1','address_2','city','state','postcode','country','phone'] as $key) {
+            $address[$key] = sanitize_text_field((string) ($data[$key] ?? ''));
+        }
+        $address['country'] = strtoupper($address['country']);
+        if ($address['first_name'] === '' || $address['address_1'] === '' || $address['city'] === '' || $address['postcode'] === '' || $address['country'] === '') {
+            return new WP_Error('ark_order_address_incomplete', 'Enter recipient name, street, city, PIN code and country.', ['status' => 400]);
+        }
+
+        $order->set_address($address, 'shipping');
+        $order->add_order_note('Customer updated the delivery address from the GlowHit app. Please review the shipping method and charge for the new destination.');
+        $order->save();
+
+        return rest_ensure_response([
+            'success' => true,
+            'order' => $this->order_payload($order, true),
+            'shipping_recalculation_required' => true,
+            'message' => 'Delivery address updated. The store may need to review shipping availability and charges for the new address.',
+        ]);
     }
 
     public function customer_return_request($request) {
