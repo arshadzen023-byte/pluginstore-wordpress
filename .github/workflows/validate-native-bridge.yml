@@ -33,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           FILE=wp-content/plugins/ark-native-api-bridge/ark-native-api-bridge.php
-          for route in "/health" "/auth/login" "/customer/login" "/customer/me" "/customer/orders" "/customer/addresses" "/orders/attach" "/payment/config" "/payment/upi-submit"; do
+          for route in "/health" "/auth/login" "/customer/login" "/customer/me" "/customer/orders" "/customer/addresses" "/orders/attach" "/payment/config" "/payment/upi-submit" "/designer/config" "/designer/media"; do
             grep -Fq "'${route}'" "$FILE" || { echo "Missing required route: $route"; exit 1; }
           done
           echo "All required native API routes are registered."

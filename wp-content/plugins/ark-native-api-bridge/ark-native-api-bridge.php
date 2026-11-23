@@ -137,6 +137,18 @@ final class ARK_Native_API_Bridge {
             'permission_callback' => [$this, 'authorize'],
         ]);
 
+        // Native ARK Designer bridge. Only WordPress administrators may edit or publish
+        // the global app configuration; customer JWTs alone never grant design access.
+        register_rest_route(self::NS, '/designer/config', [
+            ['methods' => 'GET', 'callback' => [$this, 'designer_config_proxy'], 'permission_callback' => [$this, 'authorize_designer_admin']],
+            ['methods' => 'POST', 'callback' => [$this, 'designer_config_proxy'], 'permission_callback' => [$this, 'authorize_designer_admin']],
+        ]);
+        register_rest_route(self::NS, '/designer/media', [
+            'methods' => 'GET',
+            'callback' => [$this, 'designer_media_proxy'],
+            'permission_callback' => [$this, 'authorize_designer_admin'],
+        ]);
+
         register_rest_route(self::NS, '/payment/config', [
             'methods' => 'GET',
             'callback' => [$this, 'payment_config'],
@@ -226,6 +238,176 @@ final class ARK_Native_API_Bridge {
         wp_set_current_user($user_id);
         return true;
     }
+
+    public function authorize_designer_admin($request) {
+        $authorized = $this->authorize($request);
+        if (is_wp_error($authorized)) return $authorized;
+        if (!current_user_can('manage_options')) {
+            return new WP_Error('ark_designer_forbidden', 'ARK Designer is available only to a WordPress administrator account.', ['status' => 403]);
+        }
+        return true;
+    }
+
+    private function designer_proxy($route, $method, $params = []) {
+        if (!class_exists('ARK_App_Designer')) {
+            return new WP_Error('ark_designer_unavailable', 'ARK App Designer plugin is not active.', ['status' => 503]);
+        }
+        $inner = new WP_REST_Request($method, $route);
+        if ($method === 'GET') {
+            $inner->set_query_params($params);
+        } else {
+            $inner->set_header('content-type', 'application/json');
+            $inner->set_body(wp_json_encode($params));
+        }
+        $response = rest_do_request($inner);
+        if (is_wp_error($response)) return $response;
+        $status = (int) $response->get_status();
+        $data = $response->get_data();
+        if ($status >= 400) {
+            $message = is_array($data) ? (string) ($data['message'] ?? 'Designer request failed.') : 'Designer request failed.';
+            return new WP_Error('ark_designer_request_failed', $message, ['status' => $status, 'response' => $data]);
+        }
+        return rest_ensure_response($data);
+    }
+
+    public function designer_config_proxy($request) {
+        if ($request->get_method() === 'GET') {
+            return $this->designer_proxy('/ark-designer/v1/studio/config', 'GET');
+        }
+        $body = $request->get_json_params();
+        if (!is_array($body)) {
+            return new WP_Error('ark_designer_invalid', 'Designer configuration must be a JSON object.', ['status' => 400]);
+        }
+        $config = is_array($body['config'] ?? null) ? $body['config'] : $body;
+        if (!is_array($config['pages'] ?? null)) {
+            return new WP_Error('ark_designer_invalid', 'Designer configuration is missing its pages object.', ['status' => 400]);
+        }
+
+        // The native Flutter editor stores page component arrays under display
+        // names. Convert those arrays into the existing ARK Designer page.sections
+        // contract instead of creating a second, disconnected JSON format.
+        $first_page = reset($config['pages']);
+        if (is_array($first_page) && isset($config['pages']['Home'])) {
+            $base_response = $this->designer_proxy('/ark-designer/v1/studio/config', 'GET');
+            if (is_wp_error($base_response)) return $base_response;
+            $base = $base_response instanceof WP_REST_Response ? $base_response->get_data() : $base_response;
+            if (!is_array($base) || !is_array($base['pages'] ?? null)) {
+                return new WP_Error('ark_designer_base_invalid', 'The existing WordPress Designer configuration could not be loaded.', ['status' => 503]);
+            }
+            $config = $this->native_designer_config_to_wordpress($config, $base);
+        }
+
+        $status = sanitize_key($body['status'] ?? 'published');
+        $target = $status === 'draft' ? 'draft' : 'publish';
+        return $this->designer_proxy('/ark-designer/v1/studio/' . $target, 'POST', $config);
+    }
+
+    private function native_designer_config_to_wordpress($native, $base) {
+        $page_map = [
+            'Home' => 'home',
+            'Search' => 'search',
+            'Product' => 'product',
+            'Categories' => 'categories',
+            'Wishlist' => 'wishlist',
+            'Account' => 'account',
+        ];
+        $layout_map = [
+            'banner grid' => 'banner_grid',
+            'banner list' => 'banner_list',
+            'banner scroll' => 'banner_scroll',
+            'banner slider' => 'banner_slider',
+            'category list' => 'category_list',
+            'category grid' => 'category_grid',
+            'category list tile' => 'category_list_tile',
+            'category slider' => 'category_slider',
+            'category scroll' => 'category_scroll',
+            'product grid' => 'product_grid',
+            'product slider' => 'product_carousel',
+            'product list' => 'product_list',
+        ];
+        foreach ($page_map as $native_name => $page_key) {
+            if (!array_key_exists($native_name, $native['pages']) || !is_array($native['pages'][$native_name])) continue;
+            $page = is_array($base['pages'][$page_key] ?? null) ? $base['pages'][$page_key] : ['title' => $native_name, 'sections' => []];
+            $sections = [];
+            foreach ($native['pages'][$native_name] as $component) {
+                if (!is_array($component)) continue;
+                $layout = strtolower(trim((string) ($component['layout'] ?? '')));
+                $type = $layout_map[$layout] ?? '';
+                $properties = is_array($component['properties'] ?? null) ? $component['properties'] : [];
+                if ($type === '') {
+                    // Keep native-visible sections that this editor does not yet
+                    // expose as editable Banner/Category/Product layouts.
+                    $section = $properties;
+                    $section['id'] = sanitize_key($component['id'] ?? ($properties['id'] ?? wp_generate_uuid4()));
+                    $section['title'] = sanitize_text_field($component['title'] ?? ($properties['title'] ?? 'Existing section'));
+                    $section['visible'] = !array_key_exists('enabled', $component) || !empty($component['enabled']);
+                    $sections[] = $section;
+                    continue;
+                }
+                $section = $properties;
+                $section['id'] = sanitize_key($component['id'] ?? wp_generate_uuid4());
+                $section['type'] = $type;
+                $section['designer_component_type'] = $type;
+                $section['title'] = sanitize_text_field($component['title'] ?? ucfirst($layout));
+                $section['visible'] = !array_key_exists('enabled', $component) || !empty($component['enabled']);
+                $section['show_title'] = !array_key_exists('show_title', $properties) || !empty($properties['show_title']);
+                $section['section_background'] = sanitize_hex_color($properties['background_color'] ?? '') ?: 'transparent';
+                $section['text_color'] = sanitize_hex_color($properties['title_color'] ?? '') ?: '#202733';
+                $section['height_px'] = min(2000, max(0, absint($properties['height'] ?? $properties['height_px'] ?? 180)));
+                $section['width_pct'] = min(100, max(10, (float) ($properties['width'] ?? 1) * 100));
+                $section['max_width_px'] = min(2000, max(0, absint($properties['max_cross_axis_extent'] ?? 300)));
+                $section['item_gap'] = min(40, max(0, absint(max((float) ($properties['main_axis_spacing'] ?? 10), (float) ($properties['cross_axis_spacing'] ?? 10)))));
+                $section['corner_radius'] = min(60, max(0, absint($properties['border_radius'] ?? 16)));
+                $section['columns'] = min(6, max(1, absint($properties['cross_axis_count'] ?? 2)));
+                $section['card_aspect_ratio'] = min(1.2, max(.48, (float) ($properties['cross_aspect_ratio'] ?? 1)));
+                $section['card_depth'] = min(30, max(0, absint($properties['elevation'] ?? 1)));
+                $section['limit'] = min(100, max(1, absint($properties['fixed_grid_view_count'] ?? 12)));
+                $section['horizontal'] = !empty($properties['horizontal']);
+                if (isset($properties['image_url'])) $section['image_url'] = esc_url_raw($properties['image_url']);
+                if (isset($properties['background_image_url'])) $section['background_image_url'] = esc_url_raw($properties['background_image_url']);
+                if (isset($properties['children']) && is_array($properties['children'])) $section['children'] = $properties['children'];
+                if (isset($properties['slides']) && is_array($properties['slides'])) $section['slides'] = $properties['slides'];
+
+                if (strpos($type, 'banner_') === 0) {
+                    $section['autoplay'] = !array_key_exists('autoplay', $properties) || !empty($properties['autoplay']);
+                    $section['show_arrows'] = !empty($properties['arrows']);
+                    $section['show_dots'] = !empty($properties['dots']);
+                    $section['interval_ms'] = min(15000, max(1000, absint($properties['interval_ms'] ?? 3500)));
+                    $section['pause_on_interaction'] = !array_key_exists('pause', $properties) || !empty($properties['pause']);
+                    $section['card_width'] = min(1, max(.4, (float) ($properties['view_fraction'] ?? 1)));
+                    $section['transition'] = !empty($properties['fade']) ? 'fade' : 'slide';
+                } elseif (strpos($type, 'category_') === 0) {
+                    $section['category_id'] = absint($properties['parent_category_id'] ?? 0);
+                    $section['limit'] = !empty($properties['show_all_categories']) ? 100 : min(100, max(1, absint($properties['fixed_grid_view_count'] ?? 8)));
+                } elseif (strpos($type, 'product_') === 0) {
+                    $source = sanitize_key($properties['source'] ?? 'featured');
+                    $source_map = ['on_sale' => 'sale', 'new_arrival' => 'latest', 'best_selling' => 'top_rated', 'tag' => 'latest'];
+                    $section['source'] = $source_map[$source] ?? (in_array($source, ['latest','featured','sale','category','top_rated','wishlist','recent'], true) ? $source : 'latest');
+                    $section['category_id'] = absint($properties['source_id'] ?? $properties['category_id'] ?? 0);
+                }
+                $link = (string) ($properties['link'] ?? '');
+                if ($link !== '') {
+                    $section['tap_link_type'] = preg_match('/^https?:\\/\\//i', $link) ? 'chrome' : 'in_app';
+                    $section['tap_url'] = $section['tap_link_type'] === 'chrome' ? esc_url_raw($link) : sanitize_text_field($link);
+                }
+                $sections[] = $section;
+            }
+            $page['sections'] = $sections;
+            $base['pages'][$page_key] = $page;
+        }
+        $base['native_designer_templates'] = is_array($native['templates'] ?? null) ? $native['templates'] : [];
+        return $base;
+    }
+
+    public function designer_media_proxy($request) {
+        $params = [
+            'page' => max(1, absint($request->get_param('page'))),
+            'per_page' => min(60, max(1, absint($request->get_param('per_page') ?: 30))),
+            'search' => sanitize_text_field((string) $request->get_param('search')),
+        ];
+        return $this->designer_proxy('/ark-designer/v1/studio/media', 'GET', $params);
+    }
+
 
     private function user_payload($user) {
         return [
