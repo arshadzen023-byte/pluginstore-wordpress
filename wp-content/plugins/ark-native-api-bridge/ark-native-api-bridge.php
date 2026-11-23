@@ -243,7 +243,7 @@ final class ARK_Native_API_Bridge {
         $authorized = $this->authorize($request);
         if (is_wp_error($authorized)) return $authorized;
         if (!current_user_can('manage_options')) {
-            return new WP_Error('ark_designer_forbidden', 'ARK Designer is available only to an approved WordPress administrator account.', ['status' => 403]);
+            return new WP_Error('ark_designer_forbidden', 'ARK Designer is available only to a WordPress administrator account.', ['status' => 403]);
         }
         return true;
     }
