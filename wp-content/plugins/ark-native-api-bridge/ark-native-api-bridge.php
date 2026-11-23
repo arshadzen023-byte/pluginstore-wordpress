@@ -305,8 +305,10 @@ final class ARK_Native_API_Bridge {
     private function native_designer_config_to_wordpress($native, $base) {
         $page_map = [
             'Home' => 'home',
+            'Search' => 'search',
             'Product' => 'product',
             'Categories' => 'categories',
+            'Wishlist' => 'wishlist',
             'Account' => 'account',
         ];
         $layout_map = [
