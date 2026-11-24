@@ -404,6 +404,9 @@ final class ARK_Native_API_Bridge {
             'page' => max(1, absint($request->get_param('page'))),
             'per_page' => min(60, max(1, absint($request->get_param('per_page') ?: 30))),
             'search' => sanitize_text_field((string) $request->get_param('search')),
+            'media_type' => in_array(sanitize_key((string) $request->get_param('media_type')), ['image', 'video', 'all'], true)
+                ? sanitize_key((string) $request->get_param('media_type'))
+                : 'image',
         ];
         return $this->designer_proxy('/ark-designer/v1/studio/media', 'GET', $params);
     }
