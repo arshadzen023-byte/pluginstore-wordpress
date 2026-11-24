@@ -394,6 +394,14 @@ final class ARK_Native_API_Bridge {
                         if (!is_array($child)) return [];
                         $type = sanitize_key($child['type'] ?? 'image');
                         if (!in_array($type, ['image','video','text','link'], true)) $type = 'image';
+                        $link_type = sanitize_key($child['link_type'] ?? 'in_app');
+                        if (!in_array($link_type, ['in_app','deep_link','url'], true)) $link_type = 'in_app';
+                        $link_value = trim((string) ($child['link_value'] ?? ''));
+                        if ($link_type === 'url') {
+                            $link_value = esc_url_raw($link_value, ['http','https']);
+                        } else {
+                            $link_value = sanitize_text_field($link_value);
+                        }
                         return [
                             'type' => $type,
                             'attachment_id' => absint($child['attachment_id'] ?? 0),
@@ -404,8 +412,8 @@ final class ARK_Native_API_Bridge {
                             'title' => sanitize_text_field($child['title'] ?? ''),
                             'text' => sanitize_textarea_field($child['text'] ?? ''),
                             'alt_text' => sanitize_text_field($child['alt_text'] ?? ''),
-                            'link_type' => in_array(($child['link_type'] ?? 'in_app'), ['in_app','deep_link','url'], true) ? $child['link_type'] : 'in_app',
-                            'link_value' => esc_url_raw($child['link_value'] ?? ''),
+                            'link_type' => $link_type,
+                            'link_value' => $link_value,
                             'active' => !array_key_exists('active', $child) || !empty($child['active']),
                         ];
                     }, $properties['children']));
