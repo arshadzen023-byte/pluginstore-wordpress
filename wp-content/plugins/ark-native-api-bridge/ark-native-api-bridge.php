@@ -283,9 +283,19 @@ final class ARK_Native_API_Bridge {
             return new WP_Error('ark_designer_invalid', 'Designer configuration is missing its pages object.', ['status' => 400]);
         }
 
-        // The native Flutter editor stores page component arrays under display
-        // names. Convert those arrays into the existing ARK Designer page.sections
-        // contract instead of creating a second, disconnected JSON format.
+        // Recognize a native-editor draft by its display-name page keys even
+        // when Home is currently empty or the first configured page is not Home.
+        $native_page_keys = ['Home', 'Search', 'Product', 'Categories', 'Wishlist', 'Account'];
+        $is_native_editor_config = count(array_intersect($native_page_keys, array_keys($config['pages']))) > 0;
+        if ($is_native_editor_config) {
+            $base_response = $this->designer_proxy('/ark-designer/v1/studio/config', 'GET');
+            if (is_wp_error($base_response)) return $base_response;
+            $base = $base_response instanceof WP_REST_Response ? $base_response->get_data() : $base_response;
+            if (!is_array($base) || !is_array($base['pages'] ?? null)) {
+                return new WP_Error('ark_designer_base_invalid', 'The existing WordPress Designer configuration could not be loaded.', ['status' => 503]);
+            }
+            $config = $this->native_designer_config_to_wordpress($config, $base);
+        }
         $first_page = reset($config['pages']);
         if (is_array($first_page) && isset($config['pages']['Home'])) {
             $base_response = $this->designer_proxy('/ark-designer/v1/studio/config', 'GET');
