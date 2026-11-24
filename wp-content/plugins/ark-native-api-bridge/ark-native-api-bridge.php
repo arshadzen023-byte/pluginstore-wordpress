@@ -271,8 +271,12 @@ final class ARK_Native_API_Bridge {
     }
 
     public function designer_config_proxy($request) {
-        if ($request->get_method() === 'GET') {
+        $method = strtoupper($request->get_method());
+        if ($method === 'GET') {
             return $this->designer_proxy('/ark-designer/v1/studio/config', 'GET');
+        }
+        if ($method !== 'POST') {
+            return new WP_Error('ark_designer_method', 'Unsupported Designer request method.', ['status' => 405]);
         }
         $body = $request->get_json_params();
         if (!is_array($body)) {
@@ -283,21 +287,9 @@ final class ARK_Native_API_Bridge {
             return new WP_Error('ark_designer_invalid', 'Designer configuration is missing its pages object.', ['status' => 400]);
         }
 
-        // Recognize a native-editor draft by its display-name page keys even
-        // when Home is currently empty or the first configured page is not Home.
         $native_page_keys = ['Home', 'Search', 'Product', 'Categories', 'Wishlist', 'Account'];
         $is_native_editor_config = count(array_intersect($native_page_keys, array_keys($config['pages']))) > 0;
         if ($is_native_editor_config) {
-            $base_response = $this->designer_proxy('/ark-designer/v1/studio/config', 'GET');
-            if (is_wp_error($base_response)) return $base_response;
-            $base = $base_response instanceof WP_REST_Response ? $base_response->get_data() : $base_response;
-            if (!is_array($base) || !is_array($base['pages'] ?? null)) {
-                return new WP_Error('ark_designer_base_invalid', 'The existing WordPress Designer configuration could not be loaded.', ['status' => 503]);
-            }
-            $config = $this->native_designer_config_to_wordpress($config, $base);
-        }
-        $first_page = reset($config['pages']);
-        if (is_array($first_page) && isset($config['pages']['Home'])) {
             $base_response = $this->designer_proxy('/ark-designer/v1/studio/config', 'GET');
             if (is_wp_error($base_response)) return $base_response;
             $base = $base_response instanceof WP_REST_Response ? $base_response->get_data() : $base_response;
@@ -310,6 +302,18 @@ final class ARK_Native_API_Bridge {
         $status = sanitize_key($body['status'] ?? 'published');
         $target = $status === 'draft' ? 'draft' : 'publish';
         return $this->designer_proxy('/ark-designer/v1/studio/' . $target, 'POST', $config);
+    }
+
+    public function designer_media_proxy($request) {
+        $params = [
+            'page' => max(1, absint($request->get_param('page'))),
+            'per_page' => min(60, max(1, absint($request->get_param('per_page') ?: 30))),
+            'search' => sanitize_text_field((string) $request->get_param('search')),
+            'media_type' => in_array(sanitize_key((string) $request->get_param('media_type')), ['image', 'video', 'all'], true)
+                ? sanitize_key((string) $request->get_param('media_type'))
+                : 'image',
+        ];
+        return $this->designer_proxy('/ark-designer/v1/studio/media', 'GET', $params);
     }
 
     private function native_designer_config_to_wordpress($native, $base) {
