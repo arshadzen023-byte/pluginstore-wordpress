@@ -271,8 +271,12 @@ final class ARK_Native_API_Bridge {
     }
 
     public function designer_config_proxy($request) {
-        if ($request->get_method() === 'GET') {
+        $method = strtoupper($request->get_method());
+        if ($method === 'GET') {
             return $this->designer_proxy('/ark-designer/v1/studio/config', 'GET');
+        }
+        if ($method !== 'POST') {
+            return new WP_Error('ark_designer_method', 'Unsupported Designer request method.', ['status' => 405]);
         }
         $body = $request->get_json_params();
         if (!is_array($body)) {
@@ -283,23 +287,38 @@ final class ARK_Native_API_Bridge {
             return new WP_Error('ark_designer_invalid', 'Designer configuration is missing its pages object.', ['status' => 400]);
         }
 
-        // The native Flutter editor stores page component arrays under display
-        // names. Convert those arrays into the existing ARK Designer page.sections
-        // contract instead of creating a second, disconnected JSON format.
-        $first_page = reset($config['pages']);
-        if (is_array($first_page) && isset($config['pages']['Home'])) {
-            $base_response = $this->designer_proxy('/ark-designer/v1/studio/config', 'GET');
-            if (is_wp_error($base_response)) return $base_response;
-            $base = $base_response instanceof WP_REST_Response ? $base_response->get_data() : $base_response;
-            if (!is_array($base) || !is_array($base['pages'] ?? null)) {
-                return new WP_Error('ark_designer_base_invalid', 'The existing WordPress Designer configuration could not be loaded.', ['status' => 503]);
-            }
-            $config = $this->native_designer_config_to_wordpress($config, $base);
+        // Native editor payloads are display-name page maps whose values are
+        // component arrays. The WordPress endpoint expects keyed pages with
+        // a sections collection and must preserve server-owned metadata.
+        $native_page_keys = ['Home', 'Search', 'Product', 'Categories', 'Wishlist', 'Account'];
+        $is_native_editor_config = count(array_intersect($native_page_keys, array_keys($config['pages']))) > 0;
+        if (!$is_native_editor_config) {
+            return new WP_Error('ark_designer_invalid', 'Expected a native Designer page configuration.', ['status' => 400]);
         }
+        $base_response = $this->designer_proxy('/ark-designer/v1/studio/config', 'GET');
+        if (is_wp_error($base_response)) return $base_response;
+        $base = $base_response instanceof WP_REST_Response ? $base_response->get_data() : $base_response;
+        if (!is_array($base) || !is_array($base['pages'] ?? null)) {
+            return new WP_Error('ark_designer_base_invalid', 'The existing WordPress Designer configuration could not be loaded.', ['status' => 503]);
+        }
+        $config = $this->native_designer_config_to_wordpress($config, $base);
 
         $status = sanitize_key($body['status'] ?? 'published');
         $target = $status === 'draft' ? 'draft' : 'publish';
-        return $this->designer_proxy('/ark-designer/v1/studio/' . $target, 'POST', $config);
+        $save_route = $target === 'draft' ? '/ark-designer/v1/studio/draft' : '/ark-designer/v1/studio/publish';
+        return $this->designer_proxy($save_route, 'POST', $config);
+    }
+
+    public function designer_media_proxy($request) {
+        $params = [
+            'page' => max(1, absint($request->get_param('page'))),
+            'per_page' => min(60, max(1, absint($request->get_param('per_page') ?: 30))),
+            'search' => sanitize_text_field((string) $request->get_param('search')),
+            'media_type' => in_array(sanitize_key((string) $request->get_param('media_type')), ['image', 'video', 'all'], true)
+                ? sanitize_key((string) $request->get_param('media_type'))
+                : 'image',
+        ];
+        return $this->designer_proxy('/ark-designer/v1/studio/media', 'GET', $params);
     }
 
     private function native_designer_config_to_wordpress($native, $base) {
@@ -353,6 +372,12 @@ final class ARK_Native_API_Bridge {
                 $section['show_title'] = !array_key_exists('show_title', $properties) || !empty($properties['show_title']);
                 $section['section_background'] = sanitize_hex_color($properties['background_color'] ?? '') ?: 'transparent';
                 $section['text_color'] = sanitize_hex_color($properties['title_color'] ?? '') ?: '#202733';
+                $section['title_font_size'] = min(48, max(10, (float) ($properties['title_font_size'] ?? 18)));
+                $section['title_font_weight'] = in_array(($properties['title_font_weight'] ?? 'bold'), ['normal','medium','bold'], true) ? $properties['title_font_weight'] : 'bold';
+                $section['title_text_align'] = in_array(($properties['title_text_align'] ?? 'left'), ['left','center','right'], true) ? $properties['title_text_align'] : 'left';
+                $section['title_max_lines'] = min(6, max(1, absint($properties['title_max_lines'] ?? 2)));
+                $section['countdown_enabled'] = !empty($properties['countdown_enabled']);
+                $section['countdown_time'] = sanitize_text_field($properties['countdown_time'] ?? '');
                 $section['height_px'] = min(2000, max(0, absint($properties['height'] ?? $properties['height_px'] ?? 180)));
                 $section['width_pct'] = min(100, max(10, (float) ($properties['width'] ?? 1) * 100));
                 $section['max_width_px'] = min(2000, max(0, absint($properties['max_cross_axis_extent'] ?? 300)));
@@ -362,17 +387,53 @@ final class ARK_Native_API_Bridge {
                 $section['card_aspect_ratio'] = min(1.2, max(.48, (float) ($properties['cross_aspect_ratio'] ?? 1)));
                 $section['card_depth'] = min(30, max(0, absint($properties['elevation'] ?? 1)));
                 $section['limit'] = min(100, max(1, absint($properties['fixed_grid_view_count'] ?? 12)));
+                $section['padding_top'] = min(200, max(0, (float) ($properties['padding_top'] ?? 12)));
+                $section['padding_bottom'] = min(200, max(0, (float) ($properties['padding_bottom'] ?? 12)));
+                $section['padding_left'] = min(200, max(0, (float) ($properties['padding_left'] ?? 12)));
+                $section['padding_right'] = min(200, max(0, (float) ($properties['padding_right'] ?? 12)));
+                $section['margin_top'] = min(200, max(0, (float) ($properties['margin_top'] ?? 0)));
+                $section['margin_bottom'] = min(200, max(0, (float) ($properties['margin_bottom'] ?? 0)));
+                $section['margin_left'] = min(200, max(0, (float) ($properties['margin_left'] ?? 0)));
+                $section['margin_right'] = min(200, max(0, (float) ($properties['margin_right'] ?? 0)));
                 $section['horizontal'] = !empty($properties['horizontal']);
                 if (isset($properties['image_url'])) $section['image_url'] = esc_url_raw($properties['image_url']);
                 if (isset($properties['background_image_url'])) $section['background_image_url'] = esc_url_raw($properties['background_image_url']);
-                if (isset($properties['children']) && is_array($properties['children'])) $section['children'] = $properties['children'];
+                if (isset($properties['children']) && is_array($properties['children'])) {
+                    $section['children'] = array_values(array_map(function($child) {
+                        if (!is_array($child)) return [];
+                        $type = sanitize_key($child['type'] ?? 'image');
+                        if (!in_array($type, ['image','video','text','link'], true)) $type = 'image';
+                        $link_type = sanitize_key($child['link_type'] ?? 'in_app');
+                        if (!in_array($link_type, ['in_app','deep_link','url'], true)) $link_type = 'in_app';
+                        $link_value = trim((string) ($child['link_value'] ?? ''));
+                        if ($link_type === 'url') {
+                            $link_value = esc_url_raw($link_value, ['http','https']);
+                        } else {
+                            $link_value = sanitize_text_field($link_value);
+                        }
+                        return [
+                            'type' => $type,
+                            'attachment_id' => absint($child['attachment_id'] ?? 0),
+                            'image_url' => esc_url_raw($child['image_url'] ?? ''),
+                            'video_url' => esc_url_raw($child['video_url'] ?? ''),
+                            'source_url' => esc_url_raw($child['source_url'] ?? ''),
+                            'mime_type' => sanitize_mime_type($child['mime_type'] ?? ''),
+                            'title' => sanitize_text_field($child['title'] ?? ''),
+                            'text' => sanitize_textarea_field($child['text'] ?? ''),
+                            'alt_text' => sanitize_text_field($child['alt_text'] ?? ''),
+                            'link_type' => $link_type,
+                            'link_value' => $link_value,
+                            'active' => !array_key_exists('active', $child) || !empty($child['active']),
+                        ];
+                    }, $properties['children']));
+                }
                 if (isset($properties['slides']) && is_array($properties['slides'])) $section['slides'] = $properties['slides'];
 
                 if (strpos($type, 'banner_') === 0) {
                     $section['autoplay'] = !array_key_exists('autoplay', $properties) || !empty($properties['autoplay']);
                     $section['show_arrows'] = !empty($properties['arrows']);
                     $section['show_dots'] = !empty($properties['dots']);
-                    $section['interval_ms'] = min(15000, max(1000, absint($properties['interval_ms'] ?? 3500)));
+                    $section['interval_ms'] = min(15000, max(1000, absint(((float) ($properties['autoplay_seconds'] ?? 4)) * 1000)));
                     $section['pause_on_interaction'] = !array_key_exists('pause', $properties) || !empty($properties['pause']);
                     $section['card_width'] = min(1, max(.4, (float) ($properties['view_fraction'] ?? 1)));
                     $section['transition'] = !empty($properties['fade']) ? 'fade' : 'slide';
@@ -381,9 +442,10 @@ final class ARK_Native_API_Bridge {
                     $section['limit'] = !empty($properties['show_all_categories']) ? 100 : min(100, max(1, absint($properties['fixed_grid_view_count'] ?? 8)));
                 } elseif (strpos($type, 'product_') === 0) {
                     $source = sanitize_key($properties['source'] ?? 'featured');
-                    $source_map = ['on_sale' => 'sale', 'new_arrival' => 'latest', 'best_selling' => 'top_rated', 'tag' => 'latest'];
-                    $section['source'] = $source_map[$source] ?? (in_array($source, ['latest','featured','sale','category','top_rated','wishlist','recent'], true) ? $source : 'latest');
-                    $section['category_id'] = absint($properties['source_id'] ?? $properties['category_id'] ?? 0);
+                    $source_map = ['on_sale' => 'sale', 'new_arrival' => 'latest'];
+                    $section['source'] = $source_map[$source] ?? (in_array($source, ['latest','featured','sale','category','tag','top_rated','best_selling','wishlist','recent'], true) ? $source : 'latest');
+                    $section['category_id'] = $source === 'category' ? absint($properties['source_id'] ?? $properties['category_id'] ?? 0) : absint($properties['category_id'] ?? 0);
+                    $section['tag_id'] = $source === 'tag' ? absint($properties['source_id'] ?? $properties['tag_id'] ?? 0) : absint($properties['tag_id'] ?? 0);
                 }
                 $link = (string) ($properties['link'] ?? '');
                 if ($link !== '') {
@@ -397,15 +459,6 @@ final class ARK_Native_API_Bridge {
         }
         $base['native_designer_templates'] = is_array($native['templates'] ?? null) ? $native['templates'] : [];
         return $base;
-    }
-
-    public function designer_media_proxy($request) {
-        $params = [
-            'page' => max(1, absint($request->get_param('page'))),
-            'per_page' => min(60, max(1, absint($request->get_param('per_page') ?: 30))),
-            'search' => sanitize_text_field((string) $request->get_param('search')),
-        ];
-        return $this->designer_proxy('/ark-designer/v1/studio/media', 'GET', $params);
     }
 
 
