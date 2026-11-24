@@ -353,6 +353,12 @@ final class ARK_Native_API_Bridge {
                 $section['show_title'] = !array_key_exists('show_title', $properties) || !empty($properties['show_title']);
                 $section['section_background'] = sanitize_hex_color($properties['background_color'] ?? '') ?: 'transparent';
                 $section['text_color'] = sanitize_hex_color($properties['title_color'] ?? '') ?: '#202733';
+                $section['title_font_size'] = min(48, max(10, (float) ($properties['title_font_size'] ?? 18)));
+                $section['title_font_weight'] = in_array(($properties['title_font_weight'] ?? 'bold'), ['normal','medium','bold'], true) ? $properties['title_font_weight'] : 'bold';
+                $section['title_text_align'] = in_array(($properties['title_text_align'] ?? 'left'), ['left','center','right'], true) ? $properties['title_text_align'] : 'left';
+                $section['title_max_lines'] = min(6, max(1, absint($properties['title_max_lines'] ?? 2)));
+                $section['countdown_enabled'] = !empty($properties['countdown_enabled']);
+                $section['countdown_time'] = sanitize_text_field($properties['countdown_time'] ?? '');
                 $section['height_px'] = min(2000, max(0, absint($properties['height'] ?? $properties['height_px'] ?? 180)));
                 $section['width_pct'] = min(100, max(10, (float) ($properties['width'] ?? 1) * 100));
                 $section['max_width_px'] = min(2000, max(0, absint($properties['max_cross_axis_extent'] ?? 300)));
@@ -362,10 +368,38 @@ final class ARK_Native_API_Bridge {
                 $section['card_aspect_ratio'] = min(1.2, max(.48, (float) ($properties['cross_aspect_ratio'] ?? 1)));
                 $section['card_depth'] = min(30, max(0, absint($properties['elevation'] ?? 1)));
                 $section['limit'] = min(100, max(1, absint($properties['fixed_grid_view_count'] ?? 12)));
+                $section['padding_top'] = min(200, max(0, (float) ($properties['padding_top'] ?? 12)));
+                $section['padding_bottom'] = min(200, max(0, (float) ($properties['padding_bottom'] ?? 12)));
+                $section['padding_left'] = min(200, max(0, (float) ($properties['padding_left'] ?? 12)));
+                $section['padding_right'] = min(200, max(0, (float) ($properties['padding_right'] ?? 12)));
+                $section['margin_top'] = min(200, max(0, (float) ($properties['margin_top'] ?? 0)));
+                $section['margin_bottom'] = min(200, max(0, (float) ($properties['margin_bottom'] ?? 0)));
+                $section['margin_left'] = min(200, max(0, (float) ($properties['margin_left'] ?? 0)));
+                $section['margin_right'] = min(200, max(0, (float) ($properties['margin_right'] ?? 0)));
                 $section['horizontal'] = !empty($properties['horizontal']);
                 if (isset($properties['image_url'])) $section['image_url'] = esc_url_raw($properties['image_url']);
                 if (isset($properties['background_image_url'])) $section['background_image_url'] = esc_url_raw($properties['background_image_url']);
-                if (isset($properties['children']) && is_array($properties['children'])) $section['children'] = $properties['children'];
+                if (isset($properties['children']) && is_array($properties['children'])) {
+                    $section['children'] = array_values(array_map(function($child) {
+                        if (!is_array($child)) return [];
+                        $type = sanitize_key($child['type'] ?? 'image');
+                        if (!in_array($type, ['image','video','text','link'], true)) $type = 'image';
+                        return [
+                            'type' => $type,
+                            'attachment_id' => absint($child['attachment_id'] ?? 0),
+                            'image_url' => esc_url_raw($child['image_url'] ?? ''),
+                            'video_url' => esc_url_raw($child['video_url'] ?? ''),
+                            'source_url' => esc_url_raw($child['source_url'] ?? ''),
+                            'mime_type' => sanitize_mime_type($child['mime_type'] ?? ''),
+                            'title' => sanitize_text_field($child['title'] ?? ''),
+                            'text' => sanitize_textarea_field($child['text'] ?? ''),
+                            'alt_text' => sanitize_text_field($child['alt_text'] ?? ''),
+                            'link_type' => in_array(($child['link_type'] ?? 'in_app'), ['in_app','deep_link','url'], true) ? $child['link_type'] : 'in_app',
+                            'link_value' => esc_url_raw($child['link_value'] ?? ''),
+                            'active' => !array_key_exists('active', $child) || !empty($child['active']),
+                        ];
+                    }, $properties['children']));
+                }
                 if (isset($properties['slides']) && is_array($properties['slides'])) $section['slides'] = $properties['slides'];
 
                 if (strpos($type, 'banner_') === 0) {
