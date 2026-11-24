@@ -416,7 +416,7 @@ final class ARK_Native_API_Bridge {
                     $section['autoplay'] = !array_key_exists('autoplay', $properties) || !empty($properties['autoplay']);
                     $section['show_arrows'] = !empty($properties['arrows']);
                     $section['show_dots'] = !empty($properties['dots']);
-                    $section['interval_ms'] = min(15000, max(1000, absint($properties['interval_ms'] ?? 3500)));
+                    $section['interval_ms'] = min(15000, max(1000, absint(((float) ($properties['autoplay_seconds'] ?? 4)) * 1000)));
                     $section['pause_on_interaction'] = !array_key_exists('pause', $properties) || !empty($properties['pause']);
                     $section['card_width'] = min(1, max(.4, (float) ($properties['view_fraction'] ?? 1)));
                     $section['transition'] = !empty($properties['fade']) ? 'fade' : 'slide';
