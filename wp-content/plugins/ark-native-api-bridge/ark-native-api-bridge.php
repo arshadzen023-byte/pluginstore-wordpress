@@ -287,21 +287,26 @@ final class ARK_Native_API_Bridge {
             return new WP_Error('ark_designer_invalid', 'Designer configuration is missing its pages object.', ['status' => 400]);
         }
 
+        // Native editor payloads are display-name page maps whose values are
+        // component arrays. The WordPress endpoint expects keyed pages with
+        // a sections collection and must preserve server-owned metadata.
         $native_page_keys = ['Home', 'Search', 'Product', 'Categories', 'Wishlist', 'Account'];
         $is_native_editor_config = count(array_intersect($native_page_keys, array_keys($config['pages']))) > 0;
-        if ($is_native_editor_config) {
-            $base_response = $this->designer_proxy('/ark-designer/v1/studio/config', 'GET');
-            if (is_wp_error($base_response)) return $base_response;
-            $base = $base_response instanceof WP_REST_Response ? $base_response->get_data() : $base_response;
-            if (!is_array($base) || !is_array($base['pages'] ?? null)) {
-                return new WP_Error('ark_designer_base_invalid', 'The existing WordPress Designer configuration could not be loaded.', ['status' => 503]);
-            }
-            $config = $this->native_designer_config_to_wordpress($config, $base);
+        if (!$is_native_editor_config) {
+            return new WP_Error('ark_designer_invalid', 'Expected a native Designer page configuration.', ['status' => 400]);
         }
+        $base_response = $this->designer_proxy('/ark-designer/v1/studio/config', 'GET');
+        if (is_wp_error($base_response)) return $base_response;
+        $base = $base_response instanceof WP_REST_Response ? $base_response->get_data() : $base_response;
+        if (!is_array($base) || !is_array($base['pages'] ?? null)) {
+            return new WP_Error('ark_designer_base_invalid', 'The existing WordPress Designer configuration could not be loaded.', ['status' => 503]);
+        }
+        $config = $this->native_designer_config_to_wordpress($config, $base);
 
         $status = sanitize_key($body['status'] ?? 'published');
         $target = $status === 'draft' ? 'draft' : 'publish';
-        return $this->designer_proxy('/ark-designer/v1/studio/' . $target, 'POST', $config);
+        $save_route = $target === 'draft' ? '/ark-designer/v1/studio/draft' : '/ark-designer/v1/studio/publish';
+        return $this->designer_proxy($save_route, 'POST', $config);
     }
 
     public function designer_media_proxy($request) {
