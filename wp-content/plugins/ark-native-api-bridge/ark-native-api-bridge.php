@@ -433,9 +433,10 @@ final class ARK_Native_API_Bridge {
                     $section['limit'] = !empty($properties['show_all_categories']) ? 100 : min(100, max(1, absint($properties['fixed_grid_view_count'] ?? 8)));
                 } elseif (strpos($type, 'product_') === 0) {
                     $source = sanitize_key($properties['source'] ?? 'featured');
-                    $source_map = ['on_sale' => 'sale', 'new_arrival' => 'latest', 'best_selling' => 'top_rated', 'tag' => 'latest'];
-                    $section['source'] = $source_map[$source] ?? (in_array($source, ['latest','featured','sale','category','top_rated','wishlist','recent'], true) ? $source : 'latest');
-                    $section['category_id'] = absint($properties['source_id'] ?? $properties['category_id'] ?? 0);
+                    $source_map = ['on_sale' => 'sale', 'new_arrival' => 'latest'];
+                    $section['source'] = $source_map[$source] ?? (in_array($source, ['latest','featured','sale','category','tag','top_rated','best_selling','wishlist','recent'], true) ? $source : 'latest');
+                    $section['category_id'] = $source === 'category' ? absint($properties['source_id'] ?? $properties['category_id'] ?? 0) : absint($properties['category_id'] ?? 0);
+                    $section['tag_id'] = $source === 'tag' ? absint($properties['source_id'] ?? $properties['tag_id'] ?? 0) : absint($properties['tag_id'] ?? 0);
                 }
                 $link = (string) ($properties['link'] ?? '');
                 if ($link !== '') {
