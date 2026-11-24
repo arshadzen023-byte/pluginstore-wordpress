@@ -1265,43 +1265,61 @@ final class ARK_App_Designer {
     }
 
     /**
-     * Return paginated image attachments from the real WordPress Media Library
+     * Return paginated image/video attachments from the real WordPress Media Library
      * for the native Designer. The endpoint is administrator-only.
      */
     public function api_studio_media($request) {
         $page = max(1, absint($request->get_param('page')));
         $per_page = min(60, max(1, absint($request->get_param('per_page') ?: 30)));
         $search = sanitize_text_field((string) $request->get_param('search'));
-        $query = new WP_Query([
+        $media_type = sanitize_key((string) $request->get_param('media_type'));
+        if (!in_array($media_type, ['image', 'video', 'all'], true)) $media_type = 'image';
+
+        $query_args = [
             'post_type' => 'attachment',
             'post_status' => 'inherit',
-            'post_mime_type' => 'image',
             'posts_per_page' => $per_page,
             'paged' => $page,
             'orderby' => 'date',
             'order' => 'DESC',
             's' => $search,
             'no_found_rows' => false,
-        ]);
+        ];
+        if ($media_type === 'image') {
+            $query_args['post_mime_type'] = 'image';
+        } elseif ($media_type === 'video') {
+            $query_args['post_mime_type'] = 'video';
+        } else {
+            $query_args['post_mime_type'] = ['image', 'video'];
+        }
+        $query = new WP_Query($query_args);
         $items = [];
         foreach ((array) $query->posts as $attachment) {
             $id = (int) $attachment->ID;
             $source = wp_get_attachment_url($id);
             if (!$source) continue;
-            $thumbnail = wp_get_attachment_image_url($id, 'thumbnail') ?: $source;
+            $mime_type = (string) get_post_mime_type($id);
+            $is_image = strpos($mime_type, 'image/') === 0;
+            $is_video = strpos($mime_type, 'video/') === 0;
+            if (!$is_image && !$is_video) continue;
+            $thumbnail = $is_image
+                ? (wp_get_attachment_image_url($id, 'thumbnail') ?: $source)
+                : (wp_get_attachment_image_url($id, 'medium') ?: '');
             $items[] = [
                 'id' => $id,
                 'title' => sanitize_text_field(get_the_title($id)),
                 'source_url' => esc_url_raw($source),
                 'thumbnail_url' => esc_url_raw($thumbnail),
                 'alt_text' => sanitize_text_field(get_post_meta($id, '_wp_attachment_image_alt', true)),
-                'mime_type' => sanitize_text_field((string) get_post_mime_type($id)),
+                'mime_type' => sanitize_text_field($mime_type),
+                'media_type' => $is_video ? 'video' : 'image',
             ];
         }
         return rest_ensure_response([
             'items' => $items,
             'page' => $page,
             'per_page' => $per_page,
+            'media_type' => $media_type,
             'total' => (int) $query->found_posts,
             'total_pages' => max(1, (int) $query->max_num_pages),
         ]);
