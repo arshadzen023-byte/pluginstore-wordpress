@@ -185,6 +185,8 @@ final class ARK_Native_API_Bridge {
                 'order_attach' => rest_url(self::NS . '/orders/attach'),
                 'payment_config' => rest_url(self::NS . '/payment/config'),
                 'upi_submit' => rest_url(self::NS . '/payment/upi-submit'),
+                'designer_config' => rest_url(self::NS . '/designer/config'),
+                'designer_media' => rest_url(self::NS . '/designer/media'),
             ],
         ]);
     }
