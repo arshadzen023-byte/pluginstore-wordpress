@@ -33,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           FILE=wp-content/plugins/ark-native-api-bridge/ark-native-api-bridge.php
-          for route in "/health" "/auth/login" "/customer/login" "/customer/me" "/customer/orders" "/customer/addresses" "/orders/attach" "/payment/config" "/payment/upi-submit"; do
+          for route in "/health" "/auth/login" "/customer/login" "/customer/me" "/customer/orders" "/customer/addresses" "/orders/attach" "/payment/config" "/payment/upi-submit" "/designer/config" "/designer/media"; do
             grep -Fq "'${route}'" "$FILE" || { echo "Missing required route: $route"; exit 1; }
           done
           echo "All required native API routes are registered."
@@ -41,22 +41,22 @@ jobs:
         run: |
           mkdir -p dist
           cd wp-content/plugins
-          zip -r ../../dist/ark-glowhit-native-commerce-bridge-2.1.0.zip ark-native-api-bridge
-          unzip -t ../../dist/ark-glowhit-native-commerce-bridge-2.1.0.zip
+          zip -r ../../dist/ark-glowhit-native-commerce-bridge-2.2.1.zip ark-native-api-bridge
+          unzip -t ../../dist/ark-glowhit-native-commerce-bridge-2.2.1.zip
       - name: Upload installable plugin ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: ark-glowhit-native-commerce-bridge-2.1.0
-          path: dist/ark-glowhit-native-commerce-bridge-2.1.0.zip
+          name: ark-glowhit-native-commerce-bridge-2.2.1
+          path: dist/ark-glowhit-native-commerce-bridge-2.2.1.zip
           if-no-files-found: error
           retention-days: 30
       - name: Publish GitHub release ZIP
-        if: github.ref == 'refs/heads/release/ark-glowhit-native-commerce-bridge-2.1.0'
+        if: github.ref == 'refs/heads/release/ark-glowhit-native-commerce-bridge-2.2.1'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ark-glowhit-native-commerce-bridge-2.1.0
-          name: ARK GlowHit Native Commerce Bridge 2.1.0
+          tag_name: ark-glowhit-native-commerce-bridge-2.2.1
+          name: ARK GlowHit Native Commerce Bridge 2.2.1
           prerelease: true
           generate_release_notes: true
           fail_on_unmatched_files: true
-          files: dist/ark-glowhit-native-commerce-bridge-2.1.0.zip
+          files: dist/ark-glowhit-native-commerce-bridge-2.2.1.zip
