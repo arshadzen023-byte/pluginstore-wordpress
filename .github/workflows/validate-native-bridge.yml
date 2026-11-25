@@ -47,12 +47,12 @@ jobs:
           mkdir -p dist
           cd wp-content/plugins
           zip -r ../../dist/ark-glowhit-native-commerce-bridge-2.2.2.zip ark-native-api-bridge
-          unzip -t ../../dist/ark-glowhit-native-commerce-bridge-2.2.1.zip
+          unzip -t ../../dist/ark-glowhit-native-commerce-bridge-2.2.2.zip
       - name: Upload installable plugin ZIP
         uses: actions/upload-artifact@v4
         with:
           name: ark-glowhit-native-commerce-bridge-2.2.2
-          path: dist/ark-glowhit-native-commerce-bridge-2.2.1.zip
+          path: dist/ark-glowhit-native-commerce-bridge-2.2.2.zip
           if-no-files-found: error
           retention-days: 30
       - name: Publish GitHub release ZIP
@@ -64,4 +64,4 @@ jobs:
           prerelease: true
           generate_release_notes: true
           fail_on_unmatched_files: true
-          files: dist/ark-glowhit-native-commerce-bridge-2.2.1.zip
+          files: dist/ark-glowhit-native-commerce-bridge-2.2.2.zip
