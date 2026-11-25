@@ -36,6 +36,18 @@ $checks['Native Designer Media Library REST endpoint is registered and paginated
     strpos($php, "'thumbnail_url' => esc_url_raw") !== false &&
     strpos($php, "'total_pages' =>") !== false;
 
+$checks['Native publish recognizes legacy Banner types and already-normalized ark_live_slider sections'] =
+    strpos($php, '$banner_source_type') !== false &&
+    strpos($php, "in_array($designer_component_type, $banner_types, true)") !== false;
+$checks['Native publish canonicalizes Media Library image aliases before SQL save'] =
+    strpos($php, "['source_url']") !== false &&
+    strpos($php, "['media_id']") !== false &&
+    strpos($php, "$slide['image_url'] = $image_url") !== false;
+$checks['Native publish verifies every selected Banner child was saved to SQL'] =
+    strpos($php, 'saved_slides') !== false &&
+    strpos($php, 'ark_slider_incomplete') !== false &&
+    strpos($php, "$item['children'] = $slides") !== false;
+
 $failed = [];
 foreach ($checks as $label => $passed) {
     if (!$passed) $failed[] = $label;
