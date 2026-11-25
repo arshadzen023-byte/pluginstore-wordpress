@@ -302,6 +302,7 @@ final class ARK_Native_API_Bridge {
         return $publish ? $designer->api_publish($inner) : $designer->api_save_draft($inner);
     }
 
+    // Release 2.2.2: version-independent WordPress attachment media endpoint.
     public function designer_media($request) {
         // Do not call ARK_App_Designer::api_studio_media() here. Some live
         // WordPress installs still run older Designer releases which do not
