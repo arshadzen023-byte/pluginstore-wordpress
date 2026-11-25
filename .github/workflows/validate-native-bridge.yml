@@ -37,25 +37,30 @@ jobs:
             grep -Fq "'${route}'" "$FILE" || { echo "Missing required route: $route"; exit 1; }
           done
           echo "All required native API routes are registered."
+          grep -Fq "'post_type' => 'attachment'" "$FILE" || { echo "Media Library must query WordPress attachments directly"; exit 1; }
+          grep -Fq "'items' => \$items" "$FILE" || { echo "Media Library response must expose items"; exit 1; }
+          grep -Fq "published_pages" "$FILE" || { echo "Designer config must expose published pages for legacy draft recovery"; exit 1; }
+          if grep -Fq "api_studio_media(\$inner)" "$FILE"; then echo "Bridge must not call version-specific Designer media methods"; exit 1; fi
+          echo "Media compatibility and published-page fallback checks passed."
       - name: Package installable WordPress plugin
         run: |
           mkdir -p dist
           cd wp-content/plugins
-          zip -r ../../dist/ark-glowhit-native-commerce-bridge-2.2.1.zip ark-native-api-bridge
+          zip -r ../../dist/ark-glowhit-native-commerce-bridge-2.2.2.zip ark-native-api-bridge
           unzip -t ../../dist/ark-glowhit-native-commerce-bridge-2.2.1.zip
       - name: Upload installable plugin ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: ark-glowhit-native-commerce-bridge-2.2.1
+          name: ark-glowhit-native-commerce-bridge-2.2.2
           path: dist/ark-glowhit-native-commerce-bridge-2.2.1.zip
           if-no-files-found: error
           retention-days: 30
       - name: Publish GitHub release ZIP
-        if: github.ref == 'refs/heads/release/ark-glowhit-native-commerce-bridge-2.2.1'
+        if: github.ref == 'refs/heads/release/ark-glowhit-native-commerce-bridge-2.2.2'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ark-glowhit-native-commerce-bridge-2.2.1
-          name: ARK GlowHit Native Commerce Bridge 2.2.1
+          tag_name: ark-glowhit-native-commerce-bridge-2.2.2
+          name: ARK GlowHit Native Commerce Bridge 2.2.2
           prerelease: true
           generate_release_notes: true
           fail_on_unmatched_files: true
