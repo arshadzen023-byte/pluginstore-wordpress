@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Designer
  * Description: Server-driven visual app designer for ARK Native / GlowHit Flutter apps, including live layout, navigation, theme and in-app splash configuration.
- * Version: 1.17.3
+ * Version: 1.17.4
  * Author: ARK
  * Requires PHP: 7.4
  */
@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class ARK_App_Designer {
-    const VERSION = '1.17.3';
+    const VERSION = '1.17.4';
     const PUBLISHED = 'ark_app_designer_published';
     const DRAFT = 'ark_app_designer_draft';
     const REVISIONS = 'ark_app_designer_revisions';
@@ -705,7 +705,15 @@ final class ARK_App_Designer {
 
     public function api_config() {
         $config = get_option(self::PUBLISHED, self::default_config());
-        return rest_ensure_response(self::merge_config_defaults(self::default_config(), is_array($config) ? $config : self::default_config()));
+        $response = rest_ensure_response(self::merge_config_defaults(self::default_config(), is_array($config) ? $config : self::default_config()));
+        // The native Shopping Home calls this endpoint immediately after Publish.
+        // Do not let a CDN serve an older page JSON for the previous slider interval.
+        if ($response instanceof WP_REST_Response) {
+            $response->header('Cache-Control', 'private, no-store, no-cache, must-revalidate, max-age=0');
+            $response->header('Pragma', 'no-cache');
+            $response->header('Expires', '0');
+        }
+        return $response;
     }
 
     public function api_studio_config() {
@@ -1063,13 +1071,15 @@ final class ARK_App_Designer {
                             'interval_ms' => $section['interval_ms'] ?? 3500,
                             'autoplay' => $section['autoplay'] ?? true,
                             'loop_slides' => true,
-                            'transition' => 'slide',
+                            'transition' => in_array(($section['transition'] ?? ''), ['slide','fade','zoom'], true)
+                                ? $section['transition']
+                                : (!empty($section['fade']) ? 'fade' : 'slide'),
                             'image_fit' => $section['fit'] ?? 'cover',
                             'card_width' => $section['card_width'] ?? 0.92,
-                            'slide_gap' => $section['slide_gap'] ?? 8,
-                            'show_arrows' => $section['show_arrows'] ?? false,
-                            'pagination' => !empty($section['show_dots']) ? 'dots' : 'none',
-                            'pause_on_interaction' => true,
+                            'slide_gap' => $section['cross_axis_spacing'] ?? $section['slide_gap'] ?? 8,
+                            'show_arrows' => $section['show_arrows'] ?? $section['arrows'] ?? false,
+                            'pagination' => (!empty($section['show_dots']) || !empty($section['dots'])) ? 'dots' : 'none',
+                            'pause_on_interaction' => $section['pause_on_interaction'] ?? $section['pause'] ?? true,
                         ];
                         $saved_slider = $this->save_live_slider_payload($slider_key, $legacy_settings, $slides);
                         if (is_wp_error($saved_slider)) return $saved_slider;
@@ -1111,10 +1121,20 @@ final class ARK_App_Designer {
                 $item['card_image_fit'] = in_array(($section['card_image_fit'] ?? 'contain'), ['contain','cover'], true)
                     ? ($section['card_image_fit'] ?? 'contain') : 'contain';
                 if (in_array($type, ['product_grid','product_carousel'], true) || in_array($designer_component_type, ['product_grid','product_carousel','product_list','product_scroll'], true)) {
-                    $allowed_sources = ['latest','featured','sale','category','top_rated','wishlist','recent'];
-                    $item['source'] = in_array(($section['source'] ?? 'latest'), $allowed_sources, true)
-                        ? ($section['source'] ?? 'latest') : 'latest';
+                    $raw_source = sanitize_key($section['source'] ?? 'latest');
+                    $source_aliases = ['on_sale' => 'sale', 'new_arrival' => 'latest'];
+                    $raw_source = $source_aliases[$raw_source] ?? $raw_source;
+                    $allowed_sources = ['latest','featured','sale','category','tag','top_rated','best_selling','wishlist','recent'];
+                    $item['source'] = in_array($raw_source, $allowed_sources, true) ? $raw_source : 'latest';
                     $item['category_id'] = absint($section['category_id'] ?? 0);
+                    $item['tag_id'] = absint($section['tag_id'] ?? ($item['source'] === 'tag' ? ($section['source_id'] ?? 0) : 0));
+                    $item['source_id'] = absint($section['source_id'] ?? ($item['source'] === 'tag' ? $item['tag_id'] : $item['category_id']));
+                    $item['limit'] = min(100, max(1, absint($section['limit'] ?? 12)));
+                    $item['columns'] = min(6, max(1, absint($section['columns'] ?? 2)));
+                    $item['main_axis_spacing'] = min(80, max(0, (float) ($section['main_axis_spacing'] ?? 8)));
+                    $item['cross_axis_spacing'] = min(80, max(0, (float) ($section['cross_axis_spacing'] ?? $section['item_gap'] ?? 8)));
+                    $item['elevation'] = min(30, max(0, (float) ($section['elevation'] ?? $section['card_depth'] ?? 1)));
+                    $item['width_pct'] = min(100, max(10, (float) ($section['width_pct'] ?? 100)));
                     $item['tap_action_type'] = in_array(($section['tap_action_type'] ?? 'product_detail'), ['product_detail','in_app','deeplink','website'], true)
                         ? ($section['tap_action_type'] ?? 'product_detail') : 'product_detail';
                     $item['card_width'] = min(0.82, max(0.32, (float) ($section['card_width'] ?? 0.46)));
