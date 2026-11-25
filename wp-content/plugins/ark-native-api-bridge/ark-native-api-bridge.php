@@ -147,6 +147,26 @@ final class ARK_Native_API_Bridge {
             'callback' => [$this, 'submit_upi_payment'],
             'permission_callback' => '__return_true',
         ]);
+
+        // Native Designer routes use the same signed customer token as the
+        // commerce API, but require a WordPress administrator capability.
+        register_rest_route(self::NS, '/designer/config', [
+            [
+                'methods' => WP_REST_Server::READABLE,
+                'callback' => [$this, 'designer_config'],
+                'permission_callback' => [$this, 'authorize_admin'],
+            ],
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'save_designer_config'],
+                'permission_callback' => [$this, 'authorize_admin'],
+            ],
+        ]);
+        register_rest_route(self::NS, '/designer/media', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [$this, 'designer_media'],
+            'permission_callback' => [$this, 'authorize_admin'],
+        ]);
     }
 
     public function health($request) {
@@ -225,6 +245,55 @@ final class ARK_Native_API_Bridge {
         if (!$user) return new WP_Error('ark_user_missing', 'Account not found.', ['status' => 401]);
         wp_set_current_user($user_id);
         return true;
+    }
+
+    public function authorize_admin($request) {
+        $authorized = $this->authorize($request);
+        if (is_wp_error($authorized)) return $authorized;
+        if (!current_user_can('manage_options')) {
+            return new WP_Error('ark_designer_admin_required', 'ARK Designer requires a WordPress administrator account.', ['status' => 403]);
+        }
+        return true;
+    }
+
+    private function designer_instance() {
+        if (!class_exists('ARK_App_Designer')) {
+            return new WP_Error('ark_designer_inactive', 'ARK App Designer plugin is not active.', ['status' => 503]);
+        }
+        try {
+            $reflection = new ReflectionClass('ARK_App_Designer');
+            return $reflection->newInstanceWithoutConstructor();
+        } catch (Throwable $error) {
+            return new WP_Error('ark_designer_unavailable', 'ARK App Designer could not be initialized.', ['status' => 503]);
+        }
+    }
+
+    public function designer_config($request) {
+        $designer = $this->designer_instance();
+        if (is_wp_error($designer)) return $designer;
+        return $designer->api_studio_config();
+    }
+
+    public function save_designer_config($request) {
+        $body = $request->get_json_params();
+        if (!is_array($body) || !is_array($body['config'] ?? null)) {
+            return new WP_Error('ark_designer_payload', 'Designer configuration is missing or invalid.', ['status' => 400]);
+        }
+        $designer = $this->designer_instance();
+        if (is_wp_error($designer)) return $designer;
+        $inner = new WP_REST_Request('POST');
+        $inner->set_header('Content-Type', 'application/json');
+        $inner->set_body(wp_json_encode($body['config']));
+        $publish = ($body['status'] ?? 'draft') === 'published';
+        return $publish ? $designer->api_publish($inner) : $designer->api_save_draft($inner);
+    }
+
+    public function designer_media($request) {
+        $designer = $this->designer_instance();
+        if (is_wp_error($designer)) return $designer;
+        $inner = new WP_REST_Request('GET');
+        $inner->set_query_params($request->get_query_params());
+        return $designer->api_studio_media($inner);
     }
 
     private function user_payload($user) {
