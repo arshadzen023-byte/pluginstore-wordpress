@@ -174,7 +174,7 @@ final class ARK_Native_API_Bridge {
         return rest_ensure_response([
             'success' => true,
             'plugin' => 'ARK GlowHit Native Commerce Bridge',
-            'version' => '2.2.1',
+            'version' => '2.2.2',
             'woocommerce_active' => (bool) $woocommerce_active,
             'currency' => function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : '',
             'routes' => [
