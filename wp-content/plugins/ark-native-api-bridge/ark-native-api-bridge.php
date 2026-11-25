@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK GlowHit Native Commerce Bridge
  * Description: Unified secure native commerce API for GlowHit Flutter: customer auth, addresses, orders, wishlist, payment configuration and UPI proof submission.
- * Version: 2.2.2
+ * Version: 2.2.3
  * Author: ARK
  * Requires PHP: 8.0
  * Requires Plugins: woocommerce
@@ -275,15 +275,13 @@ final class ARK_Native_API_Bridge {
         $response = $designer->api_studio_config();
         if (is_wp_error($response)) return $response;
         $config = $response instanceof WP_REST_Response ? $response->get_data() : $response;
-        if (!is_array($config)) return $response;
+        if (!is_array($config)) return new WP_Error('ark_designer_config_invalid', 'WordPress returned an invalid Designer configuration.', ['status' => 502]);
 
-        // Keep the editor's newest draft at the top level, while also exposing
-        // the last published page sections. Older native Designer builds may
-        // have saved only a partial Home draft; the app can then restore the
-        // missing live sections without discarding the edited banner.
         $published = get_option(ARK_App_Designer::PUBLISHED, []);
         if (is_array($published) && is_array($published['pages'] ?? null)) {
             $config['published_pages'] = $published['pages'];
+            $config['published_config'] = $published;
+            $config['published_version'] = absint($published['version'] ?? 0);
         }
         return rest_ensure_response($config);
     }
@@ -299,7 +297,23 @@ final class ARK_Native_API_Bridge {
         $inner->set_header('Content-Type', 'application/json');
         $inner->set_body(wp_json_encode($body['config']));
         $publish = ($body['status'] ?? 'draft') === 'published';
-        return $publish ? $designer->api_publish($inner) : $designer->api_save_draft($inner);
+        $result = $publish ? $designer->api_publish($inner) : $designer->api_save_draft($inner);
+        if (is_wp_error($result)) return $result;
+        if (!$publish) return $result;
+
+        // Return the exact server-sanitized document that became public. The
+        // native app verifies its component IDs before showing Publish success.
+        $published = get_option(ARK_App_Designer::PUBLISHED, []);
+        if (!is_array($published) || !is_array($published['pages'] ?? null)) {
+            return new WP_Error('ark_designer_publish_unverified', 'WordPress did not persist a readable published page configuration.', ['status' => 500]);
+        }
+        $data = $result instanceof WP_REST_Response ? $result->get_data() : [];
+        if (!is_array($data)) $data = [];
+        $data['success'] = true;
+        $data['status'] = 'published';
+        $data['published_version'] = absint($published['version'] ?? 0);
+        $data['published_config'] = $published;
+        return rest_ensure_response($data);
     }
 
     public function designer_media($request) {
