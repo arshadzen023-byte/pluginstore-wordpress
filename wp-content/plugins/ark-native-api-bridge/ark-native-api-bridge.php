@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK GlowHit Native Commerce Bridge
  * Description: Unified secure native commerce API for GlowHit Flutter: customer auth, addresses, orders, wishlist, payment configuration and UPI proof submission.
- * Version: 2.2.1
+ * Version: 2.2.3
  * Author: ARK
  * Requires PHP: 8.0
  * Requires Plugins: woocommerce
@@ -174,7 +174,7 @@ final class ARK_Native_API_Bridge {
         return rest_ensure_response([
             'success' => true,
             'plugin' => 'ARK GlowHit Native Commerce Bridge',
-            'version' => '2.2.1',
+            'version' => '2.2.3',
             'woocommerce_active' => (bool) $woocommerce_active,
             'currency' => function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : '',
             'routes' => [
@@ -271,7 +271,19 @@ final class ARK_Native_API_Bridge {
     public function designer_config($request) {
         $designer = $this->designer_instance();
         if (is_wp_error($designer)) return $designer;
-        return $designer->api_studio_config();
+
+        $response = $designer->api_studio_config();
+        if (is_wp_error($response)) return $response;
+        $config = $response instanceof WP_REST_Response ? $response->get_data() : $response;
+        if (!is_array($config)) return new WP_Error('ark_designer_config_invalid', 'WordPress returned an invalid Designer configuration.', ['status' => 502]);
+
+        $published = get_option(ARK_App_Designer::PUBLISHED, []);
+        if (is_array($published) && is_array($published['pages'] ?? null)) {
+            $config['published_pages'] = $published['pages'];
+            $config['published_config'] = $published;
+            $config['published_version'] = absint($published['version'] ?? 0);
+        }
+        return rest_ensure_response($config);
     }
 
     public function save_designer_config($request) {
@@ -285,17 +297,81 @@ final class ARK_Native_API_Bridge {
         $inner->set_header('Content-Type', 'application/json');
         $inner->set_body(wp_json_encode($body['config']));
         $publish = ($body['status'] ?? 'draft') === 'published';
-        return $publish ? $designer->api_publish($inner) : $designer->api_save_draft($inner);
+        $result = $publish ? $designer->api_publish($inner) : $designer->api_save_draft($inner);
+        if (is_wp_error($result)) return $result;
+        if (!$publish) return $result;
+
+        // Return the exact server-sanitized document that became public. The
+        // native app verifies its component IDs before showing Publish success.
+        $published = get_option(ARK_App_Designer::PUBLISHED, []);
+        if (!is_array($published) || !is_array($published['pages'] ?? null)) {
+            return new WP_Error('ark_designer_publish_unverified', 'WordPress did not persist a readable published page configuration.', ['status' => 500]);
+        }
+        $data = $result instanceof WP_REST_Response ? $result->get_data() : [];
+        if (!is_array($data)) $data = [];
+        $data['success'] = true;
+        $data['status'] = 'published';
+        $data['published_version'] = absint($published['version'] ?? 0);
+        $data['published_config'] = $published;
+        return rest_ensure_response($data);
     }
 
     public function designer_media($request) {
-        $designer = $this->designer_instance();
-        if (is_wp_error($designer)) return $designer;
-        $inner = new WP_REST_Request('GET');
-        $inner->set_query_params($request->get_query_params());
-        return $designer->api_studio_media($inner);
-    }
+        // Do not call ARK_App_Designer::api_studio_media() here. Some live
+        // WordPress installs still run older Designer releases which do not
+        // contain that method; Reflection followed by a missing-method call
+        // produces HTTP 500 in the native Media Library picker.
+        $page = max(1, absint($request->get_param('page')));
+        $per_page = min(60, max(1, absint($request->get_param('per_page') ?: 30)));
+        $search = sanitize_text_field((string) $request->get_param('search'));
 
+        try {
+            $query = new WP_Query([
+                'post_type' => 'attachment',
+                'post_status' => 'inherit',
+                'post_mime_type' => 'image',
+                'posts_per_page' => $per_page,
+                'paged' => $page,
+                'orderby' => 'date',
+                'order' => 'DESC',
+                's' => $search,
+                'no_found_rows' => false,
+            ]);
+
+            $items = [];
+            foreach ((array) $query->posts as $attachment) {
+                $id = (int) $attachment->ID;
+                if (!wp_attachment_is_image($id)) continue;
+                $source = wp_get_attachment_url($id);
+                if (!$source) continue;
+                $thumbnail = wp_get_attachment_image_url($id, 'medium') ?: $source;
+                $items[] = [
+                    'id' => $id,
+                    'title' => sanitize_text_field(get_the_title($id)),
+                    'source_url' => esc_url_raw($source),
+                    'thumbnail_url' => esc_url_raw($thumbnail),
+                    'alt_text' => sanitize_text_field(get_post_meta($id, '_wp_attachment_image_alt', true)),
+                    'mime_type' => sanitize_text_field((string) get_post_mime_type($id)),
+                ];
+            }
+
+            return rest_ensure_response([
+                'success' => true,
+                'items' => $items,
+                'page' => $page,
+                'per_page' => $per_page,
+                'total' => (int) $query->found_posts,
+                'total_pages' => max(1, (int) $query->max_num_pages),
+            ]);
+        } catch (Throwable $error) {
+            error_log('[ARK Native Bridge] Designer Media Library failed: ' . $error->getMessage());
+            return new WP_Error(
+                'ark_designer_media_unavailable',
+                'WordPress Media Library could not be queried. Check the server PHP error log.',
+                ['status' => 500]
+            );
+        }
+    }
     private function user_payload($user) {
         return [
             'id' => (int) $user->ID,
