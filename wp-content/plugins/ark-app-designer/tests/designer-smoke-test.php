@@ -41,7 +41,7 @@ $checks['native Navigation Bar JSON defaults include all five app destinations']
 $checks['native Navigation Bar sanitizer preserves fixed shifting, icon packs, links and colors'] =
     strpos($php, "['fixed','shifting']") !== false &&
     strpos($php, "['Material','Cupertino','Font Awesome','Remix Icons','FluentUI']") !== false &&
-    strpos($php, "'allowed_navigation_links'") !== false &&
+    strpos($php, '$allowed_navigation_links') !== false &&
     strpos($php, "'active_icon_family'") !== false &&
     strpos($php, "'active_background_color'") !== false;
 
