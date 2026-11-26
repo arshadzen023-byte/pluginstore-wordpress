@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK GlowHit Native Commerce Bridge
  * Description: Unified secure native commerce API for GlowHit Flutter: customer auth, addresses, orders, wishlist, payment configuration and UPI proof submission.
- * Version: 2.2.1
+ * Version: 2.2.2
  * Author: ARK
  * Requires PHP: 8.0
  * Requires Plugins: woocommerce
@@ -163,9 +163,16 @@ final class ARK_Native_API_Bridge {
             ],
         ]);
         register_rest_route(self::NS, '/designer/media', [
-            'methods' => WP_REST_Server::READABLE,
-            'callback' => [$this, 'designer_media'],
-            'permission_callback' => [$this, 'authorize_admin'],
+            [
+                'methods' => WP_REST_Server::READABLE,
+                'callback' => [$this, 'designer_media'],
+                'permission_callback' => [$this, 'authorize_admin'],
+            ],
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'designer_media_upload'],
+                'permission_callback' => [$this, 'authorize_admin'],
+            ],
         ]);
     }
 
@@ -294,6 +301,58 @@ final class ARK_Native_API_Bridge {
         $inner = new WP_REST_Request('GET');
         $inner->set_query_params($request->get_query_params());
         return $designer->api_studio_media($inner);
+    }
+
+    /**
+     * Upload an image selected from the phone gallery into the real WordPress
+     * Media Library. The route is protected by the same administrator token
+     * permission callback as Designer config and media browsing.
+     */
+    public function designer_media_upload($request) {
+        if (!current_user_can('upload_files')) {
+            return new WP_Error('ark_designer_upload_forbidden', 'Your WordPress account cannot upload media.', ['status' => 403]);
+        }
+
+        $files = $request->get_file_params();
+        $file = is_array($files) ? ($files['file'] ?? null) : null;
+        if (!is_array($file) || (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            return new WP_Error('ark_designer_upload_missing', 'Choose an image from your phone gallery first.', ['status' => 400]);
+        }
+        if ((int) ($file['size'] ?? 0) < 1 || (int) $file['size'] > 15 * MB_IN_BYTES) {
+            return new WP_Error('ark_designer_upload_size', 'Image must be smaller than 15 MB.', ['status' => 413]);
+        }
+
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+
+        $checked = wp_check_filetype_and_ext($file['tmp_name'], $file['name']);
+        $mime = (string) ($checked['type'] ?? '');
+        $allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+        if (!in_array($mime, $allowed, true)) {
+            return new WP_Error('ark_designer_upload_type', 'Only JPG, PNG, WEBP and GIF images are supported.', ['status' => 415]);
+        }
+
+        $attachment_id = media_handle_sideload($file, 0);
+        if (is_wp_error($attachment_id)) {
+            return new WP_Error('ark_designer_upload_failed', 'WordPress could not save this image: ' . $attachment_id->get_error_message(), ['status' => 500]);
+        }
+
+        $source = wp_get_attachment_url($attachment_id);
+        if (!$source) {
+            wp_delete_attachment($attachment_id, true);
+            return new WP_Error('ark_designer_upload_url', 'WordPress saved the file but could not create its Media Library URL.', ['status' => 500]);
+        }
+        $thumbnail = wp_get_attachment_image_url($attachment_id, 'thumbnail') ?: $source;
+        return rest_ensure_response([
+            'success' => true,
+            'id' => (int) $attachment_id,
+            'title' => sanitize_text_field(get_the_title($attachment_id)),
+            'source_url' => esc_url_raw($source),
+            'thumbnail_url' => esc_url_raw($thumbnail),
+            'alt_text' => sanitize_text_field(get_post_meta($attachment_id, '_wp_attachment_image_alt', true)),
+            'mime_type' => sanitize_text_field((string) get_post_mime_type($attachment_id)),
+        ]);
     }
 
     private function user_payload($user) {
