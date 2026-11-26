@@ -1,8 +1,13 @@
 # ARK App Designer WordPress Plugin
 
-**Plugin:** ARK App Designer 1.17.2  
+**Plugin:** ARK App Designer 1.17.4  
 **GlowHit app engine:** 1.0.41 (build 41)  
 **Companion app:** ARK Studio 1.0.0
+
+## 1.17.4 Native Navigation Bar Builder persistence
+- Adds a separate native `navigation_bar` JSON contract without replacing the legacy web-designer `navigation` settings.
+- Persists up to five navigation buttons with fixed/shifting mode, order, labels, app links, custom URLs, icon families, active icons and per-item colors.
+- Publishes the sanitized navigation JSON in the API response so the Flutter Designer can verify that WordPress retained the exact configuration.
 
 ARK App Designer controls supported Flutter app layouts and splash configuration from WordPress. Install it as a separate plugin next to WooCommerce and the ARK App Push Notifications plugin.
 

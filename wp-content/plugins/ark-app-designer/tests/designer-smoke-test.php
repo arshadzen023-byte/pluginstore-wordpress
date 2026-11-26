@@ -30,6 +30,27 @@ $checks = [
     'slider editor CSS is present' => strpos($css, '.ark-live-slide-item') !== false,
 ];
 
+$checks['native Navigation Bar JSON defaults include all five app destinations'] =
+    strpos($php, "'navigation_bar' => [") !== false &&
+    strpos($php, "'nav-home'") !== false &&
+    strpos($php, "'nav-categories'") !== false &&
+    strpos($php, "'nav-wishlist'") !== false &&
+    strpos($php, "'nav-cart'") !== false &&
+    strpos($php, "'nav-account'") !== false;
+
+$checks['native Navigation Bar sanitizer preserves fixed shifting, icon packs, links and colors'] =
+    strpos($php, "['fixed','shifting']") !== false &&
+    strpos($php, "['Material','Cupertino','Font Awesome','Remix Icons','FluentUI']") !== false &&
+    strpos($php, '$allowed_navigation_links') !== false &&
+    strpos($php, "'active_icon_family'") !== false &&
+    strpos($php, "'active_background_color'") !== false &&
+    strpos($php, 'sanitize_key($page_key)') !== false &&
+    strpos($php, 'in_array($item[\'link\'], [\'webview\',\'posts\',\'bookings\',\'contact_form_7\'], true)') !== false;
+
+$checks['published Designer response returns exact sanitized config for native parity verification'] =
+    strpos($php, "'published_config' => $clean") !== false &&
+    strpos($php, "'config' => $clean") !== false;
+
 $checks['Native Designer Media Library REST endpoint is registered and paginated'] =
     strpos($php, "'/studio/media'") !== false &&
     strpos($php, 'api_studio_media') !== false &&
