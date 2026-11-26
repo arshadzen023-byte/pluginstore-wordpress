@@ -43,7 +43,9 @@ $checks['native Navigation Bar sanitizer preserves fixed shifting, icon packs, l
     strpos($php, "['Material','Cupertino','Font Awesome','Remix Icons','FluentUI']") !== false &&
     strpos($php, '$allowed_navigation_links') !== false &&
     strpos($php, "'active_icon_family'") !== false &&
-    strpos($php, "'active_background_color'") !== false;
+    strpos($php, "'active_background_color'") !== false &&
+    strpos($php, "sanitize_key($page_key)") !== false &&
+    strpos($php, "in_array($item['link'], ['webview','posts','bookings','contact_form_7'], true)") !== false;
 
 $checks['published Designer response returns exact sanitized config for native parity verification'] =
     strpos($php, "'published_config' => $clean") !== false &&
