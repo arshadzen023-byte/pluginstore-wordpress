@@ -1082,6 +1082,19 @@ final class ARK_App_Designer {
                 $item['alignment'] = in_array(($section['alignment'] ?? 'stretch'), ['stretch','left','center','right'], true) ? ($section['alignment'] ?? 'stretch') : 'stretch';
                 $item['section_background'] = sanitize_hex_color($section['section_background'] ?? '') ?: 'transparent';
                 $item['text_color'] = sanitize_hex_color($section['text_color'] ?? '') ?: '#202733';
+                // Native Designer Text Style fields must survive sanitization as
+                // first-class component properties, not be silently reset by Home.
+                $title_background = (string) ($section['title_background_color'] ?? '#00000000');
+                $item['title_background_color'] = ($title_background === 'transparent' || $title_background === '#00000000')
+                    ? '#00000000'
+                    : (sanitize_hex_color($title_background) ?: '#00000000');
+                $item['title_font_size'] = min(96, max(8, (float) ($section['title_font_size'] ?? 18)));
+                $item['title_font_weight'] = in_array(($section['title_font_weight'] ?? 'bold'), ['normal','medium','bold'], true)
+                    ? $section['title_font_weight'] : 'bold';
+                $item['italic'] = !empty($section['italic']);
+                $item['letter_spacing'] = min(20, max(0, (float) ($section['letter_spacing'] ?? 0)));
+                $item['word_spacing'] = min(30, max(0, (float) ($section['word_spacing'] ?? 0)));
+                $item['font_family'] = sanitize_text_field($section['font_family'] ?? 'Roboto');
                 $item['card_background'] = sanitize_hex_color($section['card_background'] ?? '') ?: '#FFFFFF';
                 $item['item_gap'] = min(40, max(0, absint($section['item_gap'] ?? 8)));
                 $entrance_animation = sanitize_key($section['entrance_animation'] ?? 'none');
