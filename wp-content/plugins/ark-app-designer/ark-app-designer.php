@@ -103,6 +103,25 @@ final class ARK_App_Designer {
                     ['key' => 'account', 'label' => 'Account', 'icon' => 'person'],
                 ],
             ],
+            // Native GlowHit Navigation Bar Builder configuration. Kept separate
+            // from the legacy web-designer navigation schema for backward compatibility.
+            'navigation_bar' => [
+                'version' => 1,
+                'visible' => true,
+                'type' => 'fixed',
+                'background_color' => '#FFFFFF',
+                'selected_color' => '#5B3A9E',
+                'unselected_color' => '#77717F',
+                'show_labels' => true,
+                'elevation' => 8,
+                'items' => [
+                    ['id' => 'nav-home', 'label' => 'Home', 'link' => 'home', 'link_value' => '', 'icon_family' => 'Material', 'icon' => 'home_outlined', 'active_icon_family' => 'Material', 'active_icon' => 'home', 'icon_color' => '#77717F', 'active_icon_color' => '#5B3A9E', 'background_color' => '#FFFFFF', 'active_background_color' => '#EDE7F8'],
+                    ['id' => 'nav-categories', 'label' => 'Categories', 'link' => 'categories', 'link_value' => '', 'icon_family' => 'Material', 'icon' => 'grid_view', 'active_icon_family' => 'Material', 'active_icon' => 'grid_view', 'icon_color' => '#77717F', 'active_icon_color' => '#5B3A9E', 'background_color' => '#FFFFFF', 'active_background_color' => '#EDE7F8'],
+                    ['id' => 'nav-wishlist', 'label' => 'Wishlist', 'link' => 'wishlist', 'link_value' => '', 'icon_family' => 'Material', 'icon' => 'favorite_border', 'active_icon_family' => 'Material', 'active_icon' => 'favorite', 'icon_color' => '#77717F', 'active_icon_color' => '#5B3A9E', 'background_color' => '#FFFFFF', 'active_background_color' => '#EDE7F8'],
+                    ['id' => 'nav-cart', 'label' => 'Cart', 'link' => 'cart', 'link_value' => '', 'icon_family' => 'Material', 'icon' => 'shopping_bag_outlined', 'active_icon_family' => 'Material', 'active_icon' => 'shopping_bag', 'icon_color' => '#77717F', 'active_icon_color' => '#5B3A9E', 'background_color' => '#FFFFFF', 'active_background_color' => '#EDE7F8'],
+                    ['id' => 'nav-account', 'label' => 'Account', 'link' => 'account', 'link_value' => '', 'icon_family' => 'Material', 'icon' => 'person_outline', 'active_icon_family' => 'Material', 'active_icon' => 'person', 'icon_color' => '#77717F', 'active_icon_color' => '#5B3A9E', 'background_color' => '#FFFFFF', 'active_background_color' => '#EDE7F8'],
+                ],
+            ],
             'pages' => [
                 'home' => ['title' => 'Home', 'sections' => [
                     ['id' => 'home-search', 'type' => 'search', 'visible' => true, 'title' => 'Search products', 'placeholder' => 'Search products...', 'open_search_page' => true, 'show_voice_search' => true, 'show_camera_search' => true],
@@ -1240,6 +1259,58 @@ final class ARK_App_Designer {
         }, array_slice(array_filter((array) ($navigation['items'] ?? []), 'is_array'), 0, 5)));
 
         $clean['navigation'] = $navigation;
+
+        // Sanitize the native Navigation Bar Builder payload independently from
+        // the legacy web-designer navigation menu. Preserve the icon-family
+        // identifiers so the Flutter app can render the selected icon fonts.
+        $navigation_bar = is_array($clean['navigation_bar'] ?? null)
+            ? $clean['navigation_bar']
+            : $base['navigation_bar'];
+        $navigation_bar['version'] = 1;
+        $navigation_bar['visible'] = !array_key_exists('visible', $navigation_bar) || (bool) $navigation_bar['visible'];
+        $navigation_bar['type'] = in_array(($navigation_bar['type'] ?? 'fixed'), ['fixed','shifting'], true)
+            ? ($navigation_bar['type'] ?? 'fixed') : 'fixed';
+        foreach ([
+            'background_color' => '#FFFFFF',
+            'selected_color' => '#5B3A9E',
+            'unselected_color' => '#77717F',
+        ] as $key => $fallback) {
+            $navigation_bar[$key] = sanitize_hex_color($navigation_bar[$key] ?? '') ?: $fallback;
+        }
+        $navigation_bar['show_labels'] = !array_key_exists('show_labels', $navigation_bar) || (bool) $navigation_bar['show_labels'];
+        $navigation_bar['elevation'] = min(24, max(0, (float) ($navigation_bar['elevation'] ?? 8)));
+        $allowed_navigation_links = ['home','categories','orders','bookings','wishlist','store','cart','search','posts','page','webview','contact_form_7'];
+        $allowed_icon_families = ['Material','Cupertino','Font Awesome','Remix Icons','FluentUI'];
+        $navigation_bar['items'] = array_values(array_map(function($item) use ($allowed_navigation_links, $allowed_icon_families) {
+            if (!is_array($item)) return null;
+            $item['id'] = sanitize_text_field($item['id'] ?? wp_generate_uuid4());
+            $item['label'] = sanitize_text_field($item['label'] ?? 'Navigation');
+            $item['link'] = in_array(($item['link'] ?? 'home'), $allowed_navigation_links, true)
+                ? ($item['link'] ?? 'home') : 'home';
+            $raw_url = trim((string) ($item['link_value'] ?? ''));
+            $item['link_value'] = $raw_url !== '' ? $this->clean_url($raw_url) : '';
+            foreach (['icon_family','active_icon_family'] as $key) {
+                $family = sanitize_text_field($item[$key] ?? 'Material');
+                $item[$key] = in_array($family, $allowed_icon_families, true) ? $family : 'Material';
+            }
+            foreach (['icon','active_icon'] as $key) {
+                $item[$key] = sanitize_text_field($item[$key] ?? 'home');
+            }
+            foreach ([
+                'icon_color' => '#77717F',
+                'active_icon_color' => '#5B3A9E',
+                'background_color' => '#FFFFFF',
+                'active_background_color' => '#EDE7F8',
+            ] as $key => $fallback) {
+                $item[$key] = sanitize_hex_color($item[$key] ?? '') ?: $fallback;
+            }
+            return $item;
+        }, array_slice(array_filter((array) ($navigation_bar['items'] ?? []), 'is_array'), 0, 5)));
+        if (empty($navigation_bar['items'])) {
+            $navigation_bar['items'] = $base['navigation_bar']['items'];
+        }
+        $clean['navigation_bar'] = $navigation_bar;
+
         // Preserve every App Identity field. Previously this whitelist kept only
         // name/tagline/icon_url, silently discarding logo and splash settings on publish.
         $app = is_array($clean['app'] ?? null) ? $clean['app'] : [];
@@ -1325,7 +1396,11 @@ final class ARK_App_Designer {
         $clean = $this->sanitize_config($request->get_json_params(), is_array($baseline) ? $baseline : $this->current_editor_config());
         if (is_wp_error($clean)) return $clean;
         update_option(self::DRAFT, $clean, false);
-        return rest_ensure_response(['success' => true, 'version' => $clean['version']]);
+        return rest_ensure_response([
+            'success' => true,
+            'version' => $clean['version'],
+            'config' => $clean,
+        ]);
     }
 
     public function api_publish($request) {
@@ -1346,7 +1421,15 @@ final class ARK_App_Designer {
         update_option(self::REVISIONS, array_slice($history, 0, 20), false);
         update_option(self::PUBLISHED, $clean, false);
         update_option(self::DRAFT, $clean, false);
-        return rest_ensure_response(['success' => true, 'version' => $clean['version'], 'updated_at' => $clean['updated_at']]);
+        return rest_ensure_response([
+            'success' => true,
+            'version' => $clean['version'],
+            'updated_at' => $clean['updated_at'],
+            // Return the exact server-sanitized document so the native Designer
+            // can verify that every navigation item, link, icon and colour
+            // survived publication before reporting success.
+            'published_config' => $clean,
+        ]);
     }
 
     private function github_settings() {
