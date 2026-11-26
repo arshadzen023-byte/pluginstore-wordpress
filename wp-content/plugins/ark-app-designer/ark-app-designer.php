@@ -1288,7 +1288,14 @@ final class ARK_App_Designer {
             $item['link'] = in_array(($item['link'] ?? 'home'), $allowed_navigation_links, true)
                 ? ($item['link'] ?? 'home') : 'home';
             $raw_url = trim((string) ($item['link_value'] ?? ''));
-            $item['link_value'] = $raw_url !== '' ? $this->clean_url($raw_url) : '';
+            if ($item['link'] === 'page') {
+                $page_key = preg_replace('/^page:/i', '', $raw_url);
+                $item['link_value'] = sanitize_key($page_key);
+            } elseif (in_array($item['link'], ['webview','posts','bookings','contact_form_7'], true)) {
+                $item['link_value'] = $raw_url !== '' ? $this->clean_url($raw_url) : '';
+            } else {
+                $item['link_value'] = '';
+            }
             foreach (['icon_family','active_icon_family'] as $key) {
                 $family = sanitize_text_field($item[$key] ?? 'Material');
                 $item[$key] = in_array($family, $allowed_icon_families, true) ? $family : 'Material';
