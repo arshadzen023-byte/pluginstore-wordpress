@@ -16,6 +16,15 @@ final class ARK_Native_API_Bridge {
 
     public function __construct() {
         add_action('rest_api_init', [$this, 'routes']);
+        add_action('woocommerce_order_status_changed', [$this, 'record_order_status_timestamp'], 5, 4);
+    }
+
+    public function record_order_status_timestamp($order_id, $from_status, $to_status, $order = null) {
+        $order = ($order instanceof WC_Order) ? $order : wc_get_order(absint($order_id));
+        $to_status = sanitize_key($to_status);
+        if (!$order || $to_status === '') return;
+        $order->update_meta_data('_ark_status_changed_at_' . $to_status, gmdate(DATE_ATOM));
+        $order->save_meta_data();
     }
 
     public function routes() {
@@ -64,6 +73,9 @@ final class ARK_Native_API_Bridge {
         ]);
         register_rest_route(self::NS, '/customer/orders/(?P<id>\\d+)', [
             'methods' => 'GET', 'callback' => [$this, 'customer_order_detail_compat'], 'permission_callback' => [$this, 'authorize'],
+        ]);
+        register_rest_route(self::NS, '/customer/orders/(?P<id>\\d+)/address', [
+            'methods' => 'PUT', 'callback' => [$this, 'update_order_shipping_address'], 'permission_callback' => [$this, 'authorize'],
         ]);
         register_rest_route(self::NS, '/customer/orders/(?P<id>\\d+)/cancel', [
             'methods' => 'POST', 'callback' => [$this, 'cancel_order'], 'permission_callback' => [$this, 'authorize'],
@@ -823,6 +835,7 @@ final class ARK_Native_API_Bridge {
         // is flagged for manual store refund review (no automatic refund is sent).
         $can_cancel = in_array($status, ['pending', 'on-hold', 'processing'], true)
             && !in_array($status, ['shipped', 'completed', 'cancelled', 'refunded', 'failed'], true);
+        $can_change_address = in_array($status, ['pending', 'on-hold'], true);
 
         $payload = [
             'id' => $order->get_id(),
@@ -845,6 +858,7 @@ final class ARK_Native_API_Bridge {
             'currency' => $order->get_currency(),
             'payment_method' => $order->get_payment_method_title(),
             'can_cancel' => $can_cancel,
+            'can_change_address' => $can_change_address,
             'items' => $items,
         ];
 
@@ -929,17 +943,17 @@ final class ARK_Native_API_Bridge {
             $modified_at = $modified ? $modified->date(DATE_ATOM) : '';
             $payload['timeline'] = [
                 ['key' => 'placed', 'label' => 'Order placed', 'done' => true, 'active' => false, 'date' => $created_at],
-                ['key' => 'confirmed', 'label' => 'Confirmed', 'done' => $confirmed_done, 'active' => $status === 'confirmed', 'date' => $status_times['confirmed'] ?? ''],
-                ['key' => 'processing', 'label' => 'Processing', 'done' => $processing_done, 'active' => $status === 'processing', 'date' => $status_times['processing'] ?? ''],
-                ['key' => 'shipped', 'label' => 'Shipped', 'done' => $shipped_done, 'active' => $status === 'shipped', 'date' => $status_times['shipped'] ?? ''],
-                ['key' => 'out-for-delivery', 'label' => 'Out for delivery', 'done' => $out_for_delivery_done, 'active' => $status === 'out-of-delivery', 'date' => $status_times['out-for-delivery'] ?? ($status === 'out-of-delivery' ? $modified_at : '')],
-                ['key' => 'delivered', 'label' => 'Delivered', 'done' => $status === 'completed', 'active' => false, 'date' => $status_times['delivered'] ?? ($status === 'completed' ? $modified_at : '')],
+                ['key' => 'confirmed', 'label' => 'Confirmed', 'done' => $confirmed_done, 'active' => $status === 'confirmed', 'date' => $status_times['confirmed'] ?? (string) $order->get_meta('_ark_status_changed_at_confirmed', true)],
+                ['key' => 'processing', 'label' => 'Processing', 'done' => $processing_done, 'active' => $status === 'processing', 'date' => $status_times['processing'] ?? (string) $order->get_meta('_ark_status_changed_at_processing', true)],
+                ['key' => 'shipped', 'label' => 'Shipped', 'done' => $shipped_done, 'active' => $status === 'shipped', 'date' => $status_times['shipped'] ?? (string) $order->get_meta('_ark_status_changed_at_shipped', true)],
+                ['key' => 'out-for-delivery', 'label' => 'Out for delivery', 'done' => $out_for_delivery_done, 'active' => $status === 'out-of-delivery', 'date' => $status_times['out-for-delivery'] ?? ((string) $order->get_meta('_ark_status_changed_at_out-of-delivery', true) ?: ($status === 'out-of-delivery' ? $modified_at : ''))],
+                ['key' => 'delivered', 'label' => 'Delivered', 'done' => $status === 'completed', 'active' => false, 'date' => $status_times['delivered'] ?? ((string) $order->get_meta('_ark_status_changed_at_completed', true) ?: ($status === 'completed' ? $modified_at : ''))],
             ];
             if ($status === 'cancelled' || $status === 'refunded' || $status === 'failed') {
                 $terminal_key = $status === 'cancelled' ? 'cancelled' : $status;
                 $payload['timeline'] = [
                     ['key' => 'placed', 'label' => 'Order placed', 'done' => true, 'active' => false, 'date' => $created_at],
-                    ['key' => $terminal_key, 'label' => wc_get_order_status_name($status), 'done' => true, 'active' => true, 'date' => $status_times[$terminal_key] ?? $modified_at],
+                    ['key' => $terminal_key, 'label' => wc_get_order_status_name($status), 'done' => true, 'active' => true, 'date' => $status_times[$terminal_key] ?? ((string) $order->get_meta('_ark_status_changed_at_' . $status, true) ?: $modified_at)],
                 ];
             }
         }
@@ -1255,6 +1269,50 @@ final class ARK_Native_API_Bridge {
             }
         }
         return rest_ensure_response($addresses);
+    }
+
+    public function update_order_shipping_address($request) {
+        $order = wc_get_order(absint($request['id']));
+        if (!$order) {
+            return new WP_Error('ark_order_not_found', 'Order was not found.', ['status' => 404]);
+        }
+
+        $user_id = get_current_user_id();
+        if ((int) $order->get_customer_id() !== $user_id) {
+            return new WP_Error('ark_order_forbidden', 'You cannot change the delivery address for this order.', ['status' => 403]);
+        }
+
+        // Address edits are allowed only before fulfilment begins. Once an
+        // order is processing/shipped, the store must handle address changes.
+        if (!in_array($order->get_status(), ['pending', 'on-hold'], true)) {
+            return new WP_Error(
+                'ark_order_address_locked',
+                'The delivery address can only be changed while the order is pending or on hold.',
+                ['status' => 409]
+            );
+        }
+
+        $data = $request->get_json_params();
+        $data = is_array($data) ? $data : [];
+        $address = [];
+        foreach (['first_name','last_name','company','address_1','address_2','city','state','postcode','country','phone'] as $key) {
+            $address[$key] = sanitize_text_field((string) ($data[$key] ?? ''));
+        }
+        $address['country'] = strtoupper($address['country']);
+        if ($address['first_name'] === '' || $address['address_1'] === '' || $address['city'] === '' || $address['postcode'] === '' || $address['country'] === '') {
+            return new WP_Error('ark_order_address_incomplete', 'Enter recipient name, street, city, PIN code and country.', ['status' => 400]);
+        }
+
+        $order->set_address($address, 'shipping');
+        $order->add_order_note('Customer updated the delivery address from the GlowHit app. Please review the shipping method and charge for the new destination.');
+        $order->save();
+
+        return rest_ensure_response([
+            'success' => true,
+            'order' => $this->order_payload($order, true),
+            'shipping_recalculation_required' => true,
+            'message' => 'Delivery address updated. The store may need to review shipping availability and charges for the new address.',
+        ]);
     }
 
     public function customer_return_request($request) {
