@@ -31,6 +31,12 @@ jobs:
         run: php -l wp-content/plugins/ark-app-designer/ark-app-designer.php
       - name: Validate native App Bar and floating action JSON contract
         run: php wp-content/plugins/ark-app-designer/tests/app-bar-config-test.php
+      - name: Validate original publish response contract
+        run: php wp-content/plugins/ark-app-designer/tests/publish-response-contract-test.php
+      - name: Validate navigation and slider regressions
+        run: php wp-content/plugins/ark-app-designer/tests/navigation-slider-regression-test.php
+      - name: Validate per-page floating action regressions
+        run: php wp-content/plugins/ark-app-designer/tests/floating-action-regression-test.php
       - name: Validate ARK Native App Builder PHP syntax
         run: php -l wp-content/plugins/ark-native-app-builder/ark-native-app-builder.php && php -l wp-content/plugins/ark-native-app-builder/includes/class-ark-nab.php
       - name: Validate Native API Bridge PHP syntax
