@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Designer
  * Description: Server-driven visual app designer for ARK Native / GlowHit Flutter apps, including live layout, navigation, theme and in-app splash configuration.
- * Version: 1.17.4
+ * Version: 1.17.8
  * Author: ARK
  * Requires PHP: 7.4
  */
@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class ARK_App_Designer {
-    const VERSION = '1.17.4';
+    const VERSION = '1.17.8';
     const PUBLISHED = 'ark_app_designer_published';
     const DRAFT = 'ark_app_designer_draft';
     const REVISIONS = 'ark_app_designer_revisions';
@@ -122,6 +122,29 @@ final class ARK_App_Designer {
                     ['id' => 'nav-account', 'label' => 'Account', 'link' => 'account', 'link_value' => '', 'icon_family' => 'Material', 'icon' => 'person_outline', 'active_icon_family' => 'Material', 'active_icon' => 'person', 'icon_color' => '#77717F', 'active_icon_color' => '#5B3A9E', 'background_color' => '#FFFFFF', 'active_background_color' => '#EDE7F8'],
                 ],
             ],
+            // Native App Bar Builder: one versioned JSON contract shared by
+            // the Flutter Designer, WordPress publish sanitizer and GlowHit renderer.
+            'app_bar' => [
+                'version' => 1, 'enabled' => true, 'preset' => 'custom',
+                'background_color' => '#FFFFFF', 'foreground_color' => '#202124',
+                'background_image_url' => '', 'background_mime_type' => '', 'logo_url' => '',
+                'height' => 72, 'spacing' => 8, 'radius' => 12, 'position' => 'top',
+                'show_menu' => true, 'show_logo' => true, 'show_cart' => true,
+                'show_voice_search' => true, 'show_search' => true, 'show_wishlist' => true,
+                'show_refresh' => false, 'show_location' => false,
+                'search_placeholder' => 'Search products...',
+                'menu_icon_family' => 'Material', 'menu_icon' => 'menu',
+                'cart_icon_family' => 'Material', 'cart_icon' => 'shopping_cart_outlined',
+                'voice_icon_family' => 'Material', 'voice_icon' => 'mic_none',
+                'search_icon_family' => 'Material', 'search_icon' => 'search',
+                'wishlist_icon_family' => 'Material', 'wishlist_icon' => 'favorite_border',
+                'refresh_icon_family' => 'Material', 'refresh_icon' => 'refresh',
+                'location_icon_family' => 'Material', 'location_icon' => 'location_on_outlined',
+                'visible_pages' => ['home'=>true,'search'=>true,'categories'=>true,'wishlist'=>true,'product'=>true,'account'=>true,'cart'=>true,'orders'=>true,'notifications'=>true],
+                'actions' => [],
+            ],
+            // Per-page floating action configuration remains backward compatible.
+            'floating_actions' => [],
             'pages' => [
                 'home' => ['title' => 'Home', 'sections' => [
                     ['id' => 'home-search', 'type' => 'search', 'visible' => true, 'title' => 'Search products', 'placeholder' => 'Search products...', 'open_search_page' => true, 'show_voice_search' => true, 'show_camera_search' => true],
@@ -1317,6 +1340,87 @@ final class ARK_App_Designer {
             $navigation_bar['items'] = $base['navigation_bar']['items'];
         }
         $clean['navigation_bar'] = $navigation_bar;
+
+        // Validate the native App Bar JSON without changing existing component,
+        // Margin, Padding, Dimension, checkout or navigation schemas.
+        $app_bar = is_array($clean['app_bar'] ?? null) ? $clean['app_bar'] : $base['app_bar'];
+        $app_bar['version'] = 1;
+        $app_bar['enabled'] = !array_key_exists('enabled', $app_bar) || (bool) $app_bar['enabled'];
+        $allowed_presets = ['amazon','flipkart','myntra','meesho','minimal','premium','location','gradient','compact','search','fashion','custom'];
+        $app_bar['preset'] = in_array(($app_bar['preset'] ?? 'custom'), $allowed_presets, true) ? ($app_bar['preset'] ?? 'custom') : 'custom';
+        foreach (['background_color'=>'#FFFFFF','foreground_color'=>'#202124'] as $key => $fallback) {
+            $app_bar[$key] = sanitize_hex_color($app_bar[$key] ?? '') ?: $fallback;
+        }
+        $app_bar['background_image_url'] = $this->clean_url($app_bar['background_image_url'] ?? '');
+        $app_bar['logo_url'] = $this->clean_url($app_bar['logo_url'] ?? '');
+        $mime = sanitize_mime_type($app_bar['background_mime_type'] ?? '');
+        $app_bar['background_mime_type'] = in_array($mime, ['image/gif','image/jpeg','image/png','image/webp'], true) ? $mime : '';
+        $app_bar['height'] = min(160, max(48, (float) ($app_bar['height'] ?? 72)));
+        $app_bar['spacing'] = min(32, max(0, (float) ($app_bar['spacing'] ?? 8)));
+        $app_bar['radius'] = min(36, max(0, (float) ($app_bar['radius'] ?? 12)));
+        $app_bar['position'] = in_array(($app_bar['position'] ?? 'top'), ['top','floating','overlay'], true) ? ($app_bar['position'] ?? 'top') : 'top';
+        $app_bar['search_placeholder'] = sanitize_text_field($app_bar['search_placeholder'] ?? 'Search products...');
+        foreach (['show_menu','show_logo','show_cart','show_voice_search','show_search','show_wishlist','show_refresh','show_location'] as $key) {
+            $app_bar[$key] = !array_key_exists($key, $app_bar) || (bool) $app_bar[$key];
+        }
+        $allowed_icon_families = ['Material','Cupertino','Font Awesome','Remix Icons','FluentUI'];
+        foreach (['menu','cart','voice','search','wishlist','refresh','location'] as $icon_key) {
+            $family_key = $icon_key . '_icon_family';
+            $app_bar[$family_key] = in_array(($app_bar[$family_key] ?? 'Material'), $allowed_icon_families, true) ? ($app_bar[$family_key] ?? 'Material') : 'Material';
+            $app_bar[$icon_key . '_icon'] = sanitize_text_field($app_bar[$icon_key . '_icon'] ?? ($base['app_bar'][$icon_key . '_icon'] ?? ''));
+        }
+        $known_pages = array_values(array_unique(array_merge(['home','search','categories','wishlist','product','account','cart','orders','notifications'], $custom_visibility_pages)));
+        $visibility = is_array($app_bar['visible_pages'] ?? null) ? $app_bar['visible_pages'] : [];
+        $app_bar['visible_pages'] = [];
+        foreach ($known_pages as $page_key) {
+            $app_bar['visible_pages'][$page_key] = !array_key_exists($page_key, $visibility) || (bool) $visibility[$page_key];
+        }
+        $app_bar['actions'] = array_values(array_map(function($action) use ($allowed_icon_families, $known_pages) {
+            if (!is_array($action)) return null;
+            $action['id'] = sanitize_text_field($action['id'] ?? wp_generate_uuid4());
+            $action['label'] = sanitize_text_field($action['label'] ?? 'Action');
+            $family = sanitize_text_field($action['icon_family'] ?? 'Material');
+            $action['icon_family'] = in_array($family, $allowed_icon_families, true) ? $family : 'Material';
+            $action['icon'] = sanitize_text_field($action['icon'] ?? 'star_outline');
+            $action['visible'] = !array_key_exists('visible', $action) || (bool) $action['visible'];
+            $type = $action['link_type'] ?? 'page';
+            $action['link_type'] = in_array($type, ['page','url','deep_link'], true) ? $type : 'page';
+            $target = trim((string) ($action['link_value'] ?? ''));
+            if ($action['link_type'] === 'url') {
+                $action['link_value'] = $target !== '' ? $this->clean_url($target) : '';
+            } elseif ($action['link_type'] === 'page') {
+                $page = sanitize_key(preg_replace('/^page:/i', '', $target));
+                $action['link_value'] = in_array($page, $known_pages, true) ? $page : 'home';
+            } else {
+                $action['link_value'] = sanitize_text_field($target);
+            }
+            return $action;
+        }, array_slice(array_filter((array) ($app_bar['actions'] ?? []), 'is_array'), 0, 10)));
+        $clean['app_bar'] = $app_bar;
+
+        // Validate per-page Floating Action Buttons (legacy 1.17.7 schema).
+        $floating_actions = is_array($clean['floating_actions'] ?? null) ? $clean['floating_actions'] : [];
+        $clean_floating_actions = [];
+        foreach (array_slice($floating_actions, 0, 30, true) as $page_key => $action) {
+            $page_key = sanitize_key($page_key);
+            if (!preg_match('/^(home|search|categories|wishlist|product|account|cart|orders|notifications|custom_[a-z0-9_]{1,40})$/', $page_key) || !is_array($action)) continue;
+            $action['enabled'] = !empty($action['enabled']);
+            $family = sanitize_text_field($action['icon_family'] ?? 'Material');
+            $action['icon_family'] = in_array($family, $allowed_icon_families, true) ? $family : 'Material';
+            $action['icon'] = sanitize_text_field($action['icon'] ?? 'add');
+            $action['icon_color'] = sanitize_hex_color($action['icon_color'] ?? '') ?: '#FFFFFF';
+            $action['background_color'] = sanitize_hex_color($action['background_color'] ?? '') ?: '#5B3A9E';
+            $action['size'] = min(76, max(40, (float) ($action['size'] ?? 56)));
+            $action['margin_bottom'] = min(120, max(0, (float) ($action['margin_bottom'] ?? 16)));
+            $action['margin_right'] = min(120, max(0, (float) ($action['margin_right'] ?? 16)));
+            $type = $action['link_type'] ?? 'in_app';
+            $action['link_type'] = in_array($type, ['in_app','chrome','deeplink'], true) ? $type : 'in_app';
+            $target = trim((string) ($action['link_value'] ?? ''));
+            $action['link_value'] = $action['link_type'] === 'chrome' ? $this->clean_url($target) : sanitize_text_field($target);
+            $action['tooltip'] = sanitize_text_field($action['tooltip'] ?? '');
+            $clean_floating_actions[$page_key] = $action;
+        }
+        $clean['floating_actions'] = $clean_floating_actions;
 
         // Preserve every App Identity field. Previously this whitelist kept only
         // name/tagline/icon_url, silently discarding logo and splash settings on publish.
