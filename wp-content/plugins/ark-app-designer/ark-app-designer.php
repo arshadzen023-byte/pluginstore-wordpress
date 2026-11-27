@@ -994,7 +994,15 @@ final class ARK_App_Designer {
                 $designer_component_type = $type;
                 // All banner layout variants use the same SQL-backed slide store.
                 // The Designer's current image picker writes selected media to children.
-                $legacy_banner_slider = in_array($type, ['banner_slider','banner_grid','banner_list','banner_scroll'], true)
+                $banner_types = ['banner_slider','banner_grid','banner_list','banner_scroll'];
+                // Older native drafts can already store type=ark_live_slider while
+                // retaining their original Banner layout in designer_component_type.
+                // Treat both wire formats as Banner children so a re-publish never
+                // silently skips the SQL image save.
+                $banner_source_type = in_array($type, $banner_types, true)
+                    ? $type
+                    : (in_array($designer_component_type, $banner_types, true) ? $designer_component_type : '');
+                $legacy_banner_slider = $banner_source_type !== ''
                     && (!empty($section['items']) || !empty($section['slides']) || !empty($section['images']) || !empty($section['children']));
                 $layout_aliases = [
                     'banner_grid' => ['ark_live_slider','grid'],
@@ -1050,12 +1058,35 @@ final class ARK_App_Designer {
                         $slides = $section['items'] ?? $section['slides'] ?? $section['images'] ?? $section['children'] ?? [];
                         if (!is_array($slides)) $slides = [];
                         $is_list = ($slides === []) || (array_keys($slides) === range(0, count($slides) - 1));
-                        if (!$is_list && (isset($slides['image_url']) || isset($slides['image']) || isset($slides['src']) || isset($slides['url']) || isset($slides['attachment_id']))) {
+                        if (!$is_list && (isset($slides['image_url']) || isset($slides['source_url']) || isset($slides['image']) || isset($slides['src']) || isset($slides['url']) || isset($slides['attachment_id']) || isset($slides['media_id']))) {
                             $slides = [$slides];
                         } elseif (!$is_list && isset($slides['items']) && is_array($slides['items'])) {
                             $slides = $slides['items'];
                         } elseif (!$is_list && isset($slides['slides']) && is_array($slides['slides'])) {
                             $slides = $slides['slides'];
+                        }
+
+                        // Canonicalize every selected Media Library child before
+                        // SQL persistence. Different Designer generations used
+                        // source_url/url/src and id/media_id aliases.
+                        $slides = array_values(array_filter(array_map(function($slide) {
+                            if (!is_array($slide)) return null;
+                            $attachment_id = absint($slide['attachment_id'] ?? $slide['media_id'] ?? $slide['id'] ?? 0);
+                            $image_value = $slide['image_url'] ?? $slide['source_url'] ?? $slide['url'] ?? $slide['src'] ?? $slide['image'] ?? '';
+                            if (is_array($image_value)) {
+                                $image_value = $image_value['url'] ?? $image_value['src'] ?? '';
+                            }
+                            $image_url = $this->clean_url($image_value);
+                            if ($attachment_id < 1 && $image_url === '') return null;
+                            $slide['attachment_id'] = $attachment_id;
+                            $slide['image_url'] = $image_url;
+                            $slide['source_url'] = $image_url;
+                            $slide['type'] = 'image';
+                            return $slide;
+                        }, $slides)));
+
+                        if (count($slides) > 40) {
+                            return new WP_Error('ark_slider_limit', 'Maximum 40 images per Banner component.', ['status' => 400]);
                         }
                         $legacy_settings = [
                             'title' => $section['title'] ?? 'Live Slider',
@@ -1071,8 +1102,16 @@ final class ARK_App_Designer {
                             'pagination' => !empty($section['show_dots']) ? 'dots' : 'none',
                             'pause_on_interaction' => true,
                         ];
-                        $saved_slider = $this->save_live_slider_payload($slider_key, $legacy_settings, $slides);
-                        if (is_wp_error($saved_slider)) return $saved_slider;
+                        if (!empty($slides)) {
+                            $saved_slider = $this->save_live_slider_payload($slider_key, $legacy_settings, $slides);
+                            if (is_wp_error($saved_slider)) return $saved_slider;
+                            if ((int) ($saved_slider['saved_slides'] ?? 0) !== count($slides)) {
+                                return new WP_Error('ark_slider_incomplete', 'WordPress did not save every selected Banner image.', ['status' => 500]);
+                            }
+                            // Keep canonical inline children as a compatibility
+                            // fallback for the native Home renderer and offline use.
+                            $item['children'] = $slides;
+                        }
                     }
                     unset($item['items'], $item['slides'], $item['images'], $item['image_url'], $item['button_url']);
                 }
