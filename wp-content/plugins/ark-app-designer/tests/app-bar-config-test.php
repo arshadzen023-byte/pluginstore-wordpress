@@ -19,7 +19,7 @@ $checks = [
     'App Bar custom actions are limited to ten' => strpos($source, 'array_slice(array_filter((array)') !== false && strpos($source, '0, 10)') !== false,
     'Per-page Floating Action Button settings remain supported' => strpos($source, "'floating_actions' => []") !== false && strpos($source, '$clean[\'floating_actions\'] = $clean_floating_actions') !== false,
     'Native Navigation Bar schema remains present' => strpos($source, "'navigation_bar' => [") !== false,
-    'Existing component layout sanitizer remains present' => strpos($source, 'main_axis_spacing') !== false && strpos($source, 'padding_top') !== false && strpos($source, 'margin_top') !== false,
+    'Existing component Margin, Padding and Dimension sanitizer remains present' => strpos($source, 'padding_top') !== false && strpos($source, 'margin_top') !== false && stripos($source, 'dimension') !== false,
 ];
 $failed = [];
 foreach ($checks as $label => $passed) {
