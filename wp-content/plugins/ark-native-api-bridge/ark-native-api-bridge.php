@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK GlowHit Native Commerce Bridge
  * Description: Unified secure native commerce API for GlowHit Flutter: customer auth, addresses, orders, wishlist, payment configuration and UPI proof submission.
- * Version: 2.2.4
+ * Version: 2.2.5
  * Author: ARK
  * Requires PHP: 8.0
  * Requires Plugins: woocommerce
@@ -186,7 +186,7 @@ final class ARK_Native_API_Bridge {
         return rest_ensure_response([
             'success' => true,
             'plugin' => 'ARK GlowHit Native Commerce Bridge',
-            'version' => '2.2.4',
+            'version' => '2.2.5',
             'woocommerce_active' => (bool) $woocommerce_active,
             'currency' => function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : '',
             'routes' => [
