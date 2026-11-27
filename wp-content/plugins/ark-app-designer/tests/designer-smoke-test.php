@@ -22,10 +22,10 @@ $checks = [
   'Banner spacing maps from main axis spacing' => strpos($php, 'main_axis_spacing') !== false,
   'Banner radius maps from corner radius' => strpos($php, 'corner_radius') !== false,
   'aspect ratio accepts native Designer range' => strpos($php, 'min(3.0, max(0.4') !== false,
-  'Media Library REST route is registered and paginated' => strpos($php, "'/studio/media'") !== false && strpos($php, "'posts_per_page' => $per_page") !== false && strpos($php, "'paged' => $page") !== false,
+  'Media Library REST route is registered and paginated' => strpos($php, "'/studio/media'") !== false && strpos($php, "'posts_per_page' => \$per_page") !== false && strpos($php, "'paged' => \$page") !== false,
   'App Bar defaults and sanitization are additive' => strpos($php, "'app_bar' => [") !== false && strpos($php, "app_bar'] = ") !== false,
   'App Bar attachment IDs and address/status bar fields persist' => strpos($php, "'menu_header_image_id'") !== false && strpos($php, "'background_image_id'") !== false && strpos($php, "'address_text_color'") !== false && strpos($php, "'extend_under_status_bar'") !== false,
-  'Menu sanitizer retains per-item admin_only access' => strpos($php, "'admin_only' => !empty(\$item['admin_only'])") !== false,
+  'Menu sanitizer retains per-item admin_only access' => strpos($php, "\$item['admin_only'] = !empty(\$item['admin_only'])") !== false,
   'editor source remains readable' => strlen($js) > 50000,
   'editor CSS remains readable' => strlen($css) > 1000,
 ];
