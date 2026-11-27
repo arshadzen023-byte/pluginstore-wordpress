@@ -617,13 +617,22 @@ final class ARK_App_Designer {
                     if ($option === self::PUBLISHED) {
                         // Convert legacy Designer Children/media objects to the
                         // attachment_id + image_url shape used by the SQL slider store.
-                        $legacy_slides = $section['children'] ?? $section['items'] ?? $section['slides'] ?? $section['images'] ?? [];
+                        $legacy_slides = [];
+                        // Older Designer versions wrote the selected images into
+                        // different child collections. Prefer the first non-empty
+                        // collection so an empty "children" key cannot mask slides.
+                        foreach (['items','slides','images','children'] as $slide_source_key) {
+                            if (isset($section[$slide_source_key]) && is_array($section[$slide_source_key]) && !empty($section[$slide_source_key])) {
+                                $legacy_slides = $section[$slide_source_key];
+                                break;
+                            }
+                        }
                         $legacy_slides = is_array($legacy_slides) ? $legacy_slides : [];
                         $legacy_slides = array_values(array_filter(array_map(function($child) {
                             if (!is_array($child)) return null;
-                            $attachment_id = absint($child['attachment_id'] ?? $child['media_id'] ?? $child['id'] ?? 0);
-                            $image_url = $child['image_url'] ?? $child['url'] ?? $child['src'] ?? $child['image'] ?? '';
-                            if (is_array($image_url)) $image_url = $image_url['url'] ?? $image_url['src'] ?? '';
+                            $media = $this->resolve_slider_slide_media($child);
+                            $attachment_id = absint($media['attachment_id']);
+                            $image_url = $media['image_url'];
                             return [
                                 'attachment_id' => $attachment_id,
                                 'image_url' => esc_url_raw((string) $image_url),
