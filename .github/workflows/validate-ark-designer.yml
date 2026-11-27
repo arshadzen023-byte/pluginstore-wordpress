@@ -52,6 +52,7 @@ jobs:
           mkdir -p dist
           cd wp-content/plugins
           zip -r ../../dist/ark-app-designer-1.18.0.zip ark-app-designer
+          zip -r ../../dist/ark-native-api-bridge-2.2.5.zip ark-native-api-bridge
           zip -r ../../dist/ark-native-app-builder-0.2.0.zip ark-native-app-builder
           zip -r ../../dist/ark-woo-product-promo-slider-1.1.2.zip ark-woo-product-promo-slider
       - name: Publish installable ZIP downloads
@@ -61,6 +62,7 @@ jobs:
         run: |
           mkdir -p /tmp/ark-plugin-downloads
           cp dist/ark-app-designer-1.18.0.zip /tmp/ark-plugin-downloads/
+          cp dist/ark-native-api-bridge-2.2.5.zip /tmp/ark-plugin-downloads/
           cp dist/ark-native-app-builder-0.2.0.zip /tmp/ark-plugin-downloads/
           cp dist/ark-woo-product-promo-slider-1.1.2.zip /tmp/ark-plugin-downloads/
           git config user.name "github-actions[bot]"
@@ -73,7 +75,7 @@ jobs:
           fi
           git rm -rf . >/dev/null 2>&1 || true
           cp /tmp/ark-plugin-downloads/*.zip .
-          git add ark-app-designer-1.18.0.zip ark-native-app-builder-0.2.0.zip ark-woo-product-promo-slider-1.1.2.zip
+          git add ark-app-designer-1.18.0.zip ark-native-api-bridge-2.2.5.zip ark-native-app-builder-0.2.0.zip ark-woo-product-promo-slider-1.1.2.zip
           git commit -m "Publish installable WordPress plugin ZIPs"
           git push https://x-access-token:$GITHUB_TOKEN@github.com/$GITHUB_REPOSITORY.git HEAD:plugin-downloads --force
 
@@ -84,6 +86,7 @@ jobs:
           name: ark-native-wordpress-plugins-1.18.0
           path: |
             dist/ark-app-designer-1.18.0.zip
+            dist/ark-native-api-bridge-2.2.5.zip
             dist/ark-native-app-builder-0.2.0.zip
             dist/ark-woo-product-promo-slider-1.1.2.zip
           retention-days: 30
