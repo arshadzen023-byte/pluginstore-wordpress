@@ -16,7 +16,7 @@ $checks = [
     'Media Library attachment IDs are retained for background and menu header' => strpos($source, "'background_image_id'") !== false && strpos($source, "'menu_header_image_id'") !== false,
     'Status bar overlay and address text colour are sanitized' => strpos($source, "'extend_under_status_bar'") !== false && strpos($source, "'address_text_color'") !== false,
     'Default menu entries include an administrator-only ARK Designer item' => strpos($source, "'admin_only'=>true") !== false && strpos($source, "'menu_items' => [") !== false,
-    'Searchable 294-name icon endpoint is administrator-only' => strpos($source, "'/studio/icons'") !== false && strpos($source, "'total'=>count($icons)") !== false && strpos($source, "'permission_callback' => [\$this, 'can_design']") !== false,
+    'Searchable 294-name icon endpoint is administrator-only' => strpos($source, "'/studio/icons'") !== false && strpos($source, "'total'=>count(\$icons)") !== false && strpos($source, "'permission_callback' => [\$this, 'can_design']") !== false,
     'Native API bridge exposes icon catalogue only through administrator authorization' => is_string($bridge) && strpos($bridge, "'/designer/icons'") !== false && strpos($bridge, "'permission_callback' => [\$this, 'authorize_admin']") !== false && strpos($bridge, 'designer_icons') !== false,
     'Twelve App Bar presets are supported' => strpos($source, "['amazon','flipkart','myntra','meesho','minimal','premium','location','gradient','compact','search','fashion','custom']") !== false,
     'App Bar visibility settings are sanitized per page' => strpos($source, "'visible_pages' => ['home'=>true") !== false && strpos($source, '$app_bar[\'visible_pages\']') !== false,
