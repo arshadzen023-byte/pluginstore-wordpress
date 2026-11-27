@@ -16,6 +16,15 @@ final class ARK_Native_API_Bridge {
 
     public function __construct() {
         add_action('rest_api_init', [$this, 'routes']);
+        add_action('woocommerce_order_status_changed', [$this, 'record_order_status_timestamp'], 5, 4);
+    }
+
+    public function record_order_status_timestamp($order_id, $from_status, $to_status, $order = null) {
+        $order = ($order instanceof WC_Order) ? $order : wc_get_order(absint($order_id));
+        $to_status = sanitize_key($to_status);
+        if (!$order || $to_status === '') return;
+        $order->update_meta_data('_ark_status_changed_at_' . $to_status, gmdate(DATE_ATOM));
+        $order->save_meta_data();
     }
 
     public function routes() {
@@ -929,17 +938,17 @@ final class ARK_Native_API_Bridge {
             $modified_at = $modified ? $modified->date(DATE_ATOM) : '';
             $payload['timeline'] = [
                 ['key' => 'placed', 'label' => 'Order placed', 'done' => true, 'active' => false, 'date' => $created_at],
-                ['key' => 'confirmed', 'label' => 'Confirmed', 'done' => $confirmed_done, 'active' => $status === 'confirmed', 'date' => $status_times['confirmed'] ?? ''],
-                ['key' => 'processing', 'label' => 'Processing', 'done' => $processing_done, 'active' => $status === 'processing', 'date' => $status_times['processing'] ?? ''],
-                ['key' => 'shipped', 'label' => 'Shipped', 'done' => $shipped_done, 'active' => $status === 'shipped', 'date' => $status_times['shipped'] ?? ''],
-                ['key' => 'out-for-delivery', 'label' => 'Out for delivery', 'done' => $out_for_delivery_done, 'active' => $status === 'out-of-delivery', 'date' => $status_times['out-for-delivery'] ?? ($status === 'out-of-delivery' ? $modified_at : '')],
-                ['key' => 'delivered', 'label' => 'Delivered', 'done' => $status === 'completed', 'active' => false, 'date' => $status_times['delivered'] ?? ($status === 'completed' ? $modified_at : '')],
+                ['key' => 'confirmed', 'label' => 'Confirmed', 'done' => $confirmed_done, 'active' => $status === 'confirmed', 'date' => $status_times['confirmed'] ?? (string) $order->get_meta('_ark_status_changed_at_confirmed', true)],
+                ['key' => 'processing', 'label' => 'Processing', 'done' => $processing_done, 'active' => $status === 'processing', 'date' => $status_times['processing'] ?? (string) $order->get_meta('_ark_status_changed_at_processing', true)],
+                ['key' => 'shipped', 'label' => 'Shipped', 'done' => $shipped_done, 'active' => $status === 'shipped', 'date' => $status_times['shipped'] ?? (string) $order->get_meta('_ark_status_changed_at_shipped', true)],
+                ['key' => 'out-for-delivery', 'label' => 'Out for delivery', 'done' => $out_for_delivery_done, 'active' => $status === 'out-of-delivery', 'date' => $status_times['out-for-delivery'] ?? ((string) $order->get_meta('_ark_status_changed_at_out-of-delivery', true) ?: ($status === 'out-of-delivery' ? $modified_at : ''))],
+                ['key' => 'delivered', 'label' => 'Delivered', 'done' => $status === 'completed', 'active' => false, 'date' => $status_times['delivered'] ?? ((string) $order->get_meta('_ark_status_changed_at_completed', true) ?: ($status === 'completed' ? $modified_at : ''))],
             ];
             if ($status === 'cancelled' || $status === 'refunded' || $status === 'failed') {
                 $terminal_key = $status === 'cancelled' ? 'cancelled' : $status;
                 $payload['timeline'] = [
                     ['key' => 'placed', 'label' => 'Order placed', 'done' => true, 'active' => false, 'date' => $created_at],
-                    ['key' => $terminal_key, 'label' => wc_get_order_status_name($status), 'done' => true, 'active' => true, 'date' => $status_times[$terminal_key] ?? $modified_at],
+                    ['key' => $terminal_key, 'label' => wc_get_order_status_name($status), 'done' => true, 'active' => true, 'date' => $status_times[$terminal_key] ?? ((string) $order->get_meta('_ark_status_changed_at_' . $status, true) ?: $modified_at)],
                 ];
             }
         }
