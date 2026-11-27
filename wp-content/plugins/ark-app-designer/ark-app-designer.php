@@ -1561,7 +1561,7 @@ final class ARK_App_Designer {
         return rest_ensure_response(['items'=>$items,'page'=>$page,'per_page'=>$per_page,'media_type'=>$media_type,'total'=>(int)$query->found_posts,'total_pages'=>max(1,(int)$query->max_num_pages)]);
     }
 
-    public function api_save_draft($request) {    public function api_save_draft($request) {
+    public function api_save_draft($request) {
         $baseline = $this->current_editor_config();
         $clean = $this->sanitize_config($request->get_json_params(), is_array($baseline) ? $baseline : $this->current_editor_config());
         if (is_wp_error($clean)) return $clean;
@@ -1602,7 +1602,7 @@ final class ARK_App_Designer {
         ]);
     }
 
-    private function github_settings() {    private function github_settings() {
+    private function github_settings() {
         $settings = get_option(self::GITHUB_SETTINGS, []);
         if (!is_array($settings)) $settings = [];
         return [
