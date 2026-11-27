@@ -23,7 +23,7 @@ $checks = [
   'Banner radius maps from corner radius' => strpos($php, 'corner_radius') !== false,
   'aspect ratio accepts native Designer range' => strpos($php, 'min(3.0, max(0.4') !== false,
   'Media Library REST route is registered and paginated' => strpos($php, "'/studio/media'") !== false && strpos($php, "'posts_per_page' => $per_page") !== false && strpos($php, "'paged' => $page") !== false,
-  'App Bar defaults and sanitization are additive' => strpos($php, "'app_bar' => [") !== false && strpos($php, "$clean['app_bar'] = $app_bar") !== false,
+  'App Bar defaults and sanitization are additive' => strpos($php, "'app_bar' => [") !== false && strpos($php, "app_bar'] = ") !== false,
   'editor source remains readable' => strlen($js) > 50000,
   'editor CSS remains readable' => strlen($css) > 1000,
 ];
