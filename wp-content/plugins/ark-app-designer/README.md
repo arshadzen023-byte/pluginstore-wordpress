@@ -1,6 +1,6 @@
 # ARK App Designer WordPress Plugin
 
-**Plugin:** ARK App Designer 1.17.4  
+**Plugin:** ARK App Designer 1.17.8  
 **GlowHit app engine:** 1.0.41 (build 41)  
 **Companion app:** ARK Studio 1.0.0
 
@@ -10,6 +10,23 @@
 - Publishes the sanitized navigation JSON in the API response so the Flutter Designer can verify that WordPress retained the exact configuration.
 
 ARK App Designer controls supported Flutter app layouts and splash configuration from WordPress. Install it as a separate plugin next to WooCommerce and the ARK App Push Notifications plugin.
+
+## 1.17.8 Native App Bar Builder
+- Adds twelve ready-made App Bar presets (Amazon, Flipkart, Myntra, Meesho and additional compact, premium, location-first, gradient and custom layouts).
+- Persists menu, logo, cart, voice search, search, wishlist, refresh and address/location visibility, per-page visibility, icon family/icon choices, background colour/image/GIF, dimensions, spacing, radius and position.
+- Supports up to ten custom App Bar actions with their own icon and app-page, website or deep-link destination.
+- Sanitizes uploaded media URLs, GIF/image MIME types, icon families, page visibility and custom destinations before publish; native Designer verifies the canonical published JSON.
+
+## 1.17.7 Per-page Floating Action Button settings
+- Keeps one independent action button per built-in or custom app page, with enable/disable, icon family/icon, colours, size, offsets, destination page, website URL or app deep link.
+- Uses the existing Material, Cupertino, Font Awesome, Remix Icons and FluentUI icon catalog and category/search filters.
+- Removes an action configuration only for the selected page. Existing page sections, Margin, Padding, Dimensions and navigation defaults remain unchanged.
+
+## 1.17.6 Publish, media and navigation preservation
+- Retains the separate native `navigation_bar` configuration, fixed/shifting mode, five icon families, active icons, colours and supported destinations.
+- Slider image normalization accepts legacy `source_url`, `src`, nested Media Library objects and attachment IDs. Empty placeholder children do not invalidate valid images.
+- Legacy Banner migration selects the first non-empty `items`, `slides`, `images` or `children` collection.
+- Preserves component title typography, Margin, Padding, Dimensions and canonical publish readback.
 
 ## 1.17.2 Native page routing, theme and animation fixes
 - Opens Categories, Wishlist and Account in the full native app page shell when selected from an in-app component link, including page heading, back navigation, background, status bar and navigation bar styling.
