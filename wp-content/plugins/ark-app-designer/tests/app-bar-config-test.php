@@ -5,7 +5,7 @@
  */
 $root = dirname(__DIR__);
 $source = file_get_contents($root . '/ark-app-designer.php');
-$bridge = file_get_contents(dirname($root, 2) . '/ark-native-api-bridge/ark-native-api-bridge.php');
+$bridge = file_get_contents(dirname($root) . '/ark-native-api-bridge/ark-native-api-bridge.php');
 if (!is_string($source) || strlen($source) < 50000) {
     fwrite(STDERR, "ARK App Designer source is missing or incomplete.\n");
     exit(1);
