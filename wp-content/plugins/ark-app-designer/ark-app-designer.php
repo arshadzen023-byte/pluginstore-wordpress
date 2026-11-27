@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Designer
  * Description: Server-driven visual app designer for ARK Native / GlowHit Flutter apps, including live layout, navigation, theme and in-app splash configuration.
- * Version: 1.17.4
+ * Version: 1.17.8
  * Author: ARK
  * Requires PHP: 7.4
  */
@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class ARK_App_Designer {
-    const VERSION = '1.17.4';
+    const VERSION = '1.17.8';
     const PUBLISHED = 'ark_app_designer_published';
     const DRAFT = 'ark_app_designer_draft';
     const REVISIONS = 'ark_app_designer_revisions';
@@ -122,6 +122,29 @@ final class ARK_App_Designer {
                     ['id' => 'nav-account', 'label' => 'Account', 'link' => 'account', 'link_value' => '', 'icon_family' => 'Material', 'icon' => 'person_outline', 'active_icon_family' => 'Material', 'active_icon' => 'person', 'icon_color' => '#77717F', 'active_icon_color' => '#5B3A9E', 'background_color' => '#FFFFFF', 'active_background_color' => '#EDE7F8'],
                 ],
             ],
+            // Native App Bar Builder: one versioned JSON contract shared by
+            // the Flutter Designer, WordPress publish sanitizer and GlowHit renderer.
+            'app_bar' => [
+                'version' => 1, 'enabled' => true, 'preset' => 'custom',
+                'background_color' => '#FFFFFF', 'foreground_color' => '#202124',
+                'background_image_url' => '', 'background_mime_type' => '', 'logo_url' => '',
+                'height' => 72, 'spacing' => 8, 'radius' => 12, 'position' => 'top',
+                'show_menu' => true, 'show_logo' => true, 'show_cart' => true,
+                'show_voice_search' => true, 'show_search' => true, 'show_wishlist' => true,
+                'show_refresh' => false, 'show_location' => false,
+                'search_placeholder' => 'Search products...',
+                'menu_icon_family' => 'Material', 'menu_icon' => 'menu',
+                'cart_icon_family' => 'Material', 'cart_icon' => 'shopping_cart_outlined',
+                'voice_icon_family' => 'Material', 'voice_icon' => 'mic_none',
+                'search_icon_family' => 'Material', 'search_icon' => 'search',
+                'wishlist_icon_family' => 'Material', 'wishlist_icon' => 'favorite_border',
+                'refresh_icon_family' => 'Material', 'refresh_icon' => 'refresh',
+                'location_icon_family' => 'Material', 'location_icon' => 'location_on_outlined',
+                'visible_pages' => ['home'=>true,'search'=>true,'categories'=>true,'wishlist'=>true,'product'=>true,'account'=>true,'cart'=>true,'orders'=>true,'notifications'=>true],
+                'actions' => [],
+            ],
+            // Per-page floating action configuration remains backward compatible.
+            'floating_actions' => [],
             'pages' => [
                 'home' => ['title' => 'Home', 'sections' => [
                     ['id' => 'home-search', 'type' => 'search', 'visible' => true, 'title' => 'Search products', 'placeholder' => 'Search products...', 'open_search_page' => true, 'show_voice_search' => true, 'show_camera_search' => true],
@@ -385,6 +408,38 @@ final class ARK_App_Designer {
         return [$type, sanitize_text_field($value)];
     }
 
+    private function resolve_slider_slide_media($slide, $depth = 0) {
+        if (!is_array($slide) || $depth > 5) return ['attachment_id' => 0, 'image_url' => '', 'image_srcset' => ''];
+        $attachment_id = absint($slide['attachment_id'] ?? $slide['media_id'] ?? 0);
+        $url = '';
+        foreach (['image_url','source_url','src','url','original_url','full_url'] as $key) {
+            if (!empty($slide[$key]) && is_string($slide[$key])) {
+                $url = $this->clean_url($slide[$key]);
+                if ($url !== '') break;
+            }
+        }
+        if ($url === '') {
+            foreach (['image','media','attachment','file','data'] as $key) {
+                if (isset($slide[$key]) && is_array($slide[$key])) {
+                    $nested = $this->resolve_slider_slide_media($slide[$key], $depth + 1);
+                    if (!empty($nested['attachment_id'])) $attachment_id = $nested['attachment_id'];
+                    if (!empty($nested['image_url'])) {
+                        return ['attachment_id' => $attachment_id ?: $nested['attachment_id'], 'image_url' => $nested['image_url'], 'image_srcset' => $nested['image_srcset']];
+                    }
+                } elseif (isset($slide[$key]) && is_string($slide[$key])) {
+                    $candidate = $this->clean_url($slide[$key]);
+                    if ($candidate !== '') { $url = $candidate; break; }
+                }
+            }
+        }
+        $srcset = '';
+        if ($attachment_id > 0 && wp_attachment_is_image($attachment_id)) {
+            $url = wp_get_attachment_image_url($attachment_id, 'large') ?: wp_get_attachment_url($attachment_id) ?: $url;
+            $srcset = wp_get_attachment_image_srcset($attachment_id, 'large') ?: '';
+        }
+        return ['attachment_id' => $attachment_id, 'image_url' => $this->clean_url($url), 'image_srcset' => $srcset];
+    }
+
     private function save_live_slider_payload($slider_key, $settings, $slides) {
         global $wpdb;
         [$sliders, $items] = self::live_slider_tables();
@@ -398,23 +453,24 @@ final class ARK_App_Designer {
             return new WP_Error('ark_slider_limit', 'Maximum 40 images per slider.', ['status' => 400]);
         }
 
-        // Validate every selected image before deleting existing SQL rows.
-        // A stale Media Library attachment must never turn a valid slider into an empty one.
-        foreach ($slides as $slide_index => $slide) {
-            if (!is_array($slide)) {
-                return new WP_Error('ark_slider_image_invalid', 'Slide ' . ($slide_index + 1) . ' has invalid image data.', ['status' => 400]);
-            }
-            $attachment_id = absint($slide['attachment_id'] ?? 0);
-            $image_url = '';
-            if ($attachment_id > 0 && wp_attachment_is_image($attachment_id)) {
-                $image_url = wp_get_attachment_image_url($attachment_id, 'large') ?: wp_get_attachment_url($attachment_id);
-            } else {
-                $image_url = $this->clean_url($slide['image_url'] ?? '');
-            }
-            if (!$image_url) {
-                return new WP_Error('ark_slider_image_invalid', 'Slide ' . ($slide_index + 1) . ' has no valid image. Existing saved images were kept.', ['status' => 400]);
-            }
+        // Normalize image data from old and new Designer payloads before any
+        // SQL rows are changed. Empty placeholder children are ignored when at
+        // least one real image is present; existing SQL rows survive an entirely
+        // invalid replacement request.
+        $normalized_slides = [];
+        foreach ($slides as $slide) {
+            if (!is_array($slide)) continue;
+            $media = $this->resolve_slider_slide_media($slide);
+            if (empty($media['image_url'])) continue;
+            $slide['attachment_id'] = absint($media['attachment_id']);
+            $slide['image_url'] = $media['image_url'];
+            $slide['image_srcset'] = $media['image_srcset'];
+            $normalized_slides[] = $slide;
         }
+        if (!empty($slides) && empty($normalized_slides)) {
+            return new WP_Error('ark_slider_image_invalid', 'No valid image was found in the selected slides. Existing saved images were kept. Please reselect the image from WordPress Media Library.', ['status' => 400]);
+        }
+        $slides = $normalized_slides;
 
         $defaults = $this->live_slider_defaults();
         $row = [
@@ -451,15 +507,10 @@ final class ARK_App_Designer {
         $wpdb->delete($items, ['slider_key' => $slider_key], ['%s']);
         $saved_slide_count = 0;
         foreach (array_values($slides) as $index => $slide) {
-            $attachment_id = absint($slide['attachment_id'] ?? 0);
-            $image_url = '';
-            $srcset = '';
-            if ($attachment_id > 0 && wp_attachment_is_image($attachment_id)) {
-                $image_url = wp_get_attachment_image_url($attachment_id, 'large') ?: wp_get_attachment_url($attachment_id);
-                $srcset = wp_get_attachment_image_srcset($attachment_id, 'large') ?: '';
-            } else {
-                $image_url = $this->clean_url($slide['image_url'] ?? '');
-            }
+            $media = $this->resolve_slider_slide_media($slide);
+            $attachment_id = absint($media['attachment_id']);
+            $image_url = $media['image_url'];
+            $srcset = $media['image_srcset'];
             if (!$image_url) {
                 $wpdb->query('ROLLBACK');
                 return new WP_Error('ark_slider_image_invalid', 'A selected image became unavailable during save. Existing saved images were restored.', ['status' => 500]);
@@ -566,13 +617,22 @@ final class ARK_App_Designer {
                     if ($option === self::PUBLISHED) {
                         // Convert legacy Designer Children/media objects to the
                         // attachment_id + image_url shape used by the SQL slider store.
-                        $legacy_slides = $section['children'] ?? $section['items'] ?? $section['slides'] ?? $section['images'] ?? [];
+                        $legacy_slides = [];
+                        // Older Designer versions wrote the selected images into
+                        // different child collections. Prefer the first non-empty
+                        // collection so an empty "children" key cannot mask slides.
+                        foreach (['items','slides','images','children'] as $slide_source_key) {
+                            if (isset($section[$slide_source_key]) && is_array($section[$slide_source_key]) && !empty($section[$slide_source_key])) {
+                                $legacy_slides = $section[$slide_source_key];
+                                break;
+                            }
+                        }
                         $legacy_slides = is_array($legacy_slides) ? $legacy_slides : [];
                         $legacy_slides = array_values(array_filter(array_map(function($child) {
                             if (!is_array($child)) return null;
-                            $attachment_id = absint($child['attachment_id'] ?? $child['media_id'] ?? $child['id'] ?? 0);
-                            $image_url = $child['image_url'] ?? $child['url'] ?? $child['src'] ?? $child['image'] ?? '';
-                            if (is_array($image_url)) $image_url = $image_url['url'] ?? $image_url['src'] ?? '';
+                            $media = $this->resolve_slider_slide_media($child);
+                            $attachment_id = absint($media['attachment_id']);
+                            $image_url = $media['image_url'];
                             return [
                                 'attachment_id' => $attachment_id,
                                 'image_url' => esc_url_raw((string) $image_url),
@@ -591,14 +651,18 @@ final class ARK_App_Designer {
                         }));
                         $legacy_settings = [
                             'title' => $section['title'] ?? 'Live Slider',
-                            'height_px' => $section['height'] ?? 178,
+                            'height_px' => $section['height_px'] ?? $section['height'] ?? 178,
                             'interval_ms' => $section['interval_ms'] ?? 3500,
                             'autoplay' => $section['autoplay'] ?? true,
                             'loop_slides' => true,
-                            'transition' => 'slide',
-                            'image_fit' => $section['fit'] ?? 'cover',
+                            'transition' => $section['transition'] ?? 'slide',
+                            'image_fit' => $section['card_image_fit'] ?? $section['fit'] ?? 'cover',
+                            'card_width' => $section['width'] ?? $section['card_width'] ?? 0.92,
+                            'slide_gap' => $section['main_axis_spacing'] ?? $section['slide_gap'] ?? 8,
+                            'radius' => $section['corner_radius'] ?? $section['border_radius'] ?? 14,
                             'show_arrows' => $section['show_arrows'] ?? false,
                             'pagination' => !empty($section['show_dots']) ? 'dots' : 'none',
+                            'pause_on_interaction' => $section['pause_on_interaction'] ?? true,
                         ];
                         // Do not wipe a valid SQL slider when an older config has no Children.
                         if (!empty($legacy_slides)) {
@@ -827,7 +891,9 @@ final class ARK_App_Designer {
     }
 
     private function clean_value($value, $depth = 0) {
-        if ($depth > 6) return '';
+        // Preserve nested Media Library attachment and URL payloads from Designer children.
+        // Keep recursion bounded while allowing the actual component/media nesting depth.
+        if ($depth > 16) return '';
         if (is_bool($value) || is_numeric($value) || $value === null) return $value;
         if (is_string($value)) {
             $value = wp_check_invalid_utf8($value);
@@ -969,6 +1035,49 @@ final class ARK_App_Designer {
         $celebration['pages'] = ['home'];
         $clean['celebration'] = $celebration;
 
+        // Sanitize per-page Floating Action Buttons independently. This field is
+        // additive and deliberately does not modify component dimensions, spacing,
+        // page sections, navigation, or App Identity.
+        $floating_actions = is_array($clean['floating_actions'] ?? null)
+            ? $clean['floating_actions'] : [];
+        $floating_page_keys = ['home','search','categories','product','account','wishlist','cart','orders','notifications'];
+        foreach (array_keys(is_array($clean['pages'] ?? null) ? $clean['pages'] : []) as $candidate_key) {
+            if (preg_match('/^custom_[a-z0-9_]{1,40}$/', (string) $candidate_key) === 1) $floating_page_keys[] = (string) $candidate_key;
+        }
+        $floating_page_keys = array_values(array_unique($floating_page_keys));
+        $clean_floating_actions = [];
+        foreach ($floating_actions as $page_key => $action) {
+            $page_key = sanitize_key($page_key);
+            if (!in_array($page_key, $floating_page_keys, true) || !is_array($action)) continue;
+            $link_type = in_array(($action['link_type'] ?? 'in_app'), ['in_app','chrome','deeplink'], true) ? ($action['link_type'] ?? 'in_app') : 'in_app';
+            $link_value = trim((string) ($action['link_value'] ?? ''));
+            if ($link_type === 'chrome') {
+                if ($link_value !== '' && !preg_match('/^https?:\/\//i', $link_value)) $link_value = 'https://' . $link_value;
+                $link_value = $this->clean_url($link_value);
+            } elseif ($link_type === 'in_app') {
+                $target_key = preg_replace('/^page:/i', '', $link_value);
+                $link_value = in_array($target_key, $floating_page_keys, true) ? 'page:' . $target_key : '';
+            } else {
+                $link_value = sanitize_text_field($link_value);
+            }
+            $family = sanitize_text_field($action['icon_family'] ?? 'Material');
+            if (!in_array($family, ['Material','Cupertino','Font Awesome','Remix Icons','FluentUI'], true)) $family = 'Material';
+            $clean_floating_actions[$page_key] = [
+                'enabled' => !empty($action['enabled']),
+                'icon_family' => $family,
+                'icon' => sanitize_text_field($action['icon'] ?? 'add'),
+                'icon_color' => sanitize_hex_color($action['icon_color'] ?? '') ?: '#FFFFFF',
+                'background_color' => sanitize_hex_color($action['background_color'] ?? '') ?: '#5B3A9E',
+                'size' => min(76, max(40, absint($action['size'] ?? 56))),
+                'margin_bottom' => min(120, max(0, absint($action['margin_bottom'] ?? 16))),
+                'margin_right' => min(120, max(0, absint($action['margin_right'] ?? 16))),
+                'link_type' => $link_type,
+                'link_value' => $link_value,
+                'tooltip' => sanitize_text_field($action['tooltip'] ?? ''),
+            ];
+        }
+        $clean['floating_actions'] = $clean_floating_actions;
+
         $pages = is_array($clean['pages'] ?? null) ? $clean['pages'] : [];
         $allowed_pages = ['home','search','categories','product','account','wishlist'];
         foreach (array_keys($pages) as $candidate_key) {
@@ -1066,7 +1175,13 @@ final class ARK_App_Designer {
                     $slider_key = sanitize_key($section['slider_key'] ?? $section['id'] ?? wp_generate_uuid4());
                     $item['slider_key'] = $slider_key;
                     if ($legacy_banner_slider) {
-                        $slides = $section['items'] ?? $section['slides'] ?? $section['images'] ?? $section['children'] ?? [];
+                        $slides = [];
+                        foreach (['items','slides','images','children'] as $slide_source_key) {
+                            if (isset($section[$slide_source_key]) && is_array($section[$slide_source_key]) && !empty($section[$slide_source_key])) {
+                                $slides = $section[$slide_source_key];
+                                break;
+                            }
+                        }
                         if (!is_array($slides)) $slides = [];
                         $is_list = ($slides === []) || (array_keys($slides) === range(0, count($slides) - 1));
                         if (!$is_list && (isset($slides['image_url']) || isset($slides['image']) || isset($slides['src']) || isset($slides['url']) || isset($slides['attachment_id']))) {
@@ -1139,7 +1254,7 @@ final class ARK_App_Designer {
                 }
                 $item['card_radius'] = min(40, max(0, absint($section['card_radius'] ?? 14)));
                 $item['card_depth'] = min(30, max(0, absint($section['card_depth'] ?? 12)));
-                $item['card_aspect_ratio'] = min(1.20, max(0.48, (float) ($section['card_aspect_ratio'] ?? 0.66)));
+                $item['card_aspect_ratio'] = min(3.0, max(0.4, (float) ($section['card_aspect_ratio'] ?? 0.66)));
                 $item['card_image_fit'] = in_array(($section['card_image_fit'] ?? 'contain'), ['contain','cover'], true)
                     ? ($section['card_image_fit'] ?? 'contain') : 'contain';
                 if (in_array($type, ['product_grid','product_carousel'], true) || in_array($designer_component_type, ['product_grid','product_carousel','product_list','product_scroll'], true)) {
@@ -1265,7 +1380,7 @@ final class ARK_App_Designer {
         // identifiers so the Flutter app can render the selected icon fonts.
         $navigation_bar = is_array($clean['navigation_bar'] ?? null)
             ? $clean['navigation_bar']
-            : $base['navigation_bar'];
+            : ($base['navigation_bar'] ?? self::default_config()['navigation_bar']);
         $navigation_bar['version'] = 1;
         $navigation_bar['visible'] = !array_key_exists('visible', $navigation_bar) || (bool) $navigation_bar['visible'];
         $navigation_bar['type'] = in_array(($navigation_bar['type'] ?? 'fixed'), ['fixed','shifting'], true)
@@ -1314,9 +1429,67 @@ final class ARK_App_Designer {
             return $item;
         }, array_slice(array_filter((array) ($navigation_bar['items'] ?? []), 'is_array'), 0, 5)));
         if (empty($navigation_bar['items'])) {
-            $navigation_bar['items'] = $base['navigation_bar']['items'];
+            $navigation_bar['items'] = ($base['navigation_bar']['items'] ?? self::default_config()['navigation_bar']['items']);
         }
         $clean['navigation_bar'] = $navigation_bar;
+
+        // Validate the native App Bar JSON without changing existing component,
+        // Margin, Padding, Dimension, checkout or navigation schemas.
+        $app_bar = is_array($clean['app_bar'] ?? null) ? $clean['app_bar'] : $base['app_bar'];
+        $app_bar['version'] = 1;
+        $app_bar['enabled'] = !array_key_exists('enabled', $app_bar) || (bool) $app_bar['enabled'];
+        $allowed_presets = ['amazon','flipkart','myntra','meesho','minimal','premium','location','gradient','compact','search','fashion','custom'];
+        $app_bar['preset'] = in_array(($app_bar['preset'] ?? 'custom'), $allowed_presets, true) ? ($app_bar['preset'] ?? 'custom') : 'custom';
+        foreach (['background_color'=>'#FFFFFF','foreground_color'=>'#202124'] as $key => $fallback) {
+            $app_bar[$key] = sanitize_hex_color($app_bar[$key] ?? '') ?: $fallback;
+        }
+        $app_bar['background_image_url'] = $this->clean_url($app_bar['background_image_url'] ?? '');
+        $app_bar['logo_url'] = $this->clean_url($app_bar['logo_url'] ?? '');
+        $mime = sanitize_mime_type($app_bar['background_mime_type'] ?? '');
+        $app_bar['background_mime_type'] = in_array($mime, ['image/gif','image/jpeg','image/png','image/webp'], true) ? $mime : '';
+        $app_bar['height'] = min(160, max(48, (float) ($app_bar['height'] ?? 72)));
+        $app_bar['spacing'] = min(32, max(0, (float) ($app_bar['spacing'] ?? 8)));
+        $app_bar['radius'] = min(36, max(0, (float) ($app_bar['radius'] ?? 12)));
+        $app_bar['position'] = in_array(($app_bar['position'] ?? 'top'), ['top','floating','overlay'], true) ? ($app_bar['position'] ?? 'top') : 'top';
+        $app_bar['search_placeholder'] = sanitize_text_field($app_bar['search_placeholder'] ?? 'Search products...');
+        foreach (['show_menu','show_logo','show_cart','show_voice_search','show_search','show_wishlist','show_refresh','show_location'] as $key) {
+            $app_bar[$key] = !array_key_exists($key, $app_bar) || (bool) $app_bar[$key];
+        }
+        $allowed_icon_families = ['Material','Cupertino','Font Awesome','Remix Icons','FluentUI'];
+        foreach (['menu','cart','voice','search','wishlist','refresh','location'] as $icon_key) {
+            $family_key = $icon_key . '_icon_family';
+            $app_bar[$family_key] = in_array(($app_bar[$family_key] ?? 'Material'), $allowed_icon_families, true) ? ($app_bar[$family_key] ?? 'Material') : 'Material';
+            $app_bar[$icon_key . '_icon'] = sanitize_text_field($app_bar[$icon_key . '_icon'] ?? ($base['app_bar'][$icon_key . '_icon'] ?? ''));
+        }
+        $known_pages = array_values(array_unique(array_merge(['home','search','categories','wishlist','product','account','cart','orders','notifications'], $custom_visibility_pages)));
+        $visibility = is_array($app_bar['visible_pages'] ?? null) ? $app_bar['visible_pages'] : [];
+        $app_bar['visible_pages'] = [];
+        foreach ($known_pages as $page_key) {
+            $app_bar['visible_pages'][$page_key] = !array_key_exists($page_key, $visibility) || (bool) $visibility[$page_key];
+        }
+        $app_bar['actions'] = array_values(array_map(function($action) use ($allowed_icon_families, $known_pages) {
+            if (!is_array($action)) return null;
+            $action['id'] = sanitize_text_field($action['id'] ?? wp_generate_uuid4());
+            $action['label'] = sanitize_text_field($action['label'] ?? 'Action');
+            $family = sanitize_text_field($action['icon_family'] ?? 'Material');
+            $action['icon_family'] = in_array($family, $allowed_icon_families, true) ? $family : 'Material';
+            $action['icon'] = sanitize_text_field($action['icon'] ?? 'star_outline');
+            $action['visible'] = !array_key_exists('visible', $action) || (bool) $action['visible'];
+            $type = $action['link_type'] ?? 'page';
+            $action['link_type'] = in_array($type, ['page','url','deep_link'], true) ? $type : 'page';
+            $target = trim((string) ($action['link_value'] ?? ''));
+            if ($action['link_type'] === 'url') {
+                $action['link_value'] = $target !== '' ? $this->clean_url($target) : '';
+            } elseif ($action['link_type'] === 'page') {
+                $page = sanitize_key(preg_replace('/^page:/i', '', $target));
+                $action['link_value'] = in_array($page, $known_pages, true) ? $page : 'home';
+            } else {
+                $action['link_value'] = sanitize_text_field($target);
+            }
+            return $action;
+        }, array_slice(array_filter((array) ($app_bar['actions'] ?? []), 'is_array'), 0, 10)));
+        $clean['app_bar'] = $app_bar;
+
 
         // Preserve every App Identity field. Previously this whitelist kept only
         // name/tagline/icon_url, silently discarding logo and splash settings on publish.
@@ -1359,43 +1532,42 @@ final class ARK_App_Designer {
      * Return paginated image attachments from the real WordPress Media Library
      * for the native Designer. The endpoint is administrator-only.
      */
+    /**
+     * Return paginated image/video attachments from the real WordPress Media Library
+     * for the native Designer. The endpoint is administrator-only.
+     */
     public function api_studio_media($request) {
         $page = max(1, absint($request->get_param('page')));
         $per_page = min(60, max(1, absint($request->get_param('per_page') ?: 30)));
         $search = sanitize_text_field((string) $request->get_param('search'));
-        $query = new WP_Query([
-            'post_type' => 'attachment',
-            'post_status' => 'inherit',
-            'post_mime_type' => 'image',
-            'posts_per_page' => $per_page,
-            'paged' => $page,
-            'orderby' => 'date',
-            'order' => 'DESC',
-            's' => $search,
-            'no_found_rows' => false,
-        ]);
+        $media_type = sanitize_key((string) $request->get_param('media_type'));
+        if (!in_array($media_type, ['image', 'video', 'all'], true)) $media_type = 'image';
+        $query_args = [
+            'post_type' => 'attachment','post_status' => 'inherit','posts_per_page' => $per_page,
+            'paged' => $page,'orderby' => 'date','order' => 'DESC','s' => $search,'no_found_rows' => false,
+        ];
+        if ($media_type === 'image') $query_args['post_mime_type'] = 'image';
+        elseif ($media_type === 'video') $query_args['post_mime_type'] = 'video';
+        else $query_args['post_mime_type'] = ['image','video'];
+        $query = new WP_Query($query_args);
         $items = [];
         foreach ((array) $query->posts as $attachment) {
             $id = (int) $attachment->ID;
             $source = wp_get_attachment_url($id);
             if (!$source) continue;
-            $thumbnail = wp_get_attachment_image_url($id, 'thumbnail') ?: $source;
+            $mime_type = (string) get_post_mime_type($id);
+            $is_image = strpos($mime_type, 'image/') === 0;
+            $is_video = strpos($mime_type, 'video/') === 0;
+            if (!$is_image && !$is_video) continue;
+            $thumbnail = $is_image ? (wp_get_attachment_image_url($id, 'thumbnail') ?: $source) : (wp_get_attachment_image_url($id, 'medium') ?: '');
             $items[] = [
-                'id' => $id,
-                'title' => sanitize_text_field(get_the_title($id)),
-                'source_url' => esc_url_raw($source),
-                'thumbnail_url' => esc_url_raw($thumbnail),
+                'id' => $id,'title' => sanitize_text_field(get_the_title($id)),
+                'source_url' => esc_url_raw($source),'thumbnail_url' => esc_url_raw($thumbnail),
                 'alt_text' => sanitize_text_field(get_post_meta($id, '_wp_attachment_image_alt', true)),
-                'mime_type' => sanitize_text_field((string) get_post_mime_type($id)),
+                'mime_type' => sanitize_text_field($mime_type),'media_type' => $is_video ? 'video' : 'image',
             ];
         }
-        return rest_ensure_response([
-            'items' => $items,
-            'page' => $page,
-            'per_page' => $per_page,
-            'total' => (int) $query->found_posts,
-            'total_pages' => max(1, (int) $query->max_num_pages),
-        ]);
+        return rest_ensure_response(['items'=>$items,'page'=>$page,'per_page'=>$per_page,'media_type'=>$media_type,'total'=>(int)$query->found_posts,'total_pages'=>max(1,(int)$query->max_num_pages)]);
     }
 
     public function api_save_draft($request) {
@@ -1417,7 +1589,6 @@ final class ARK_App_Designer {
         $current = get_option(self::PUBLISHED, self::default_config());
         $clean['version'] = max(1, absint($current['version'] ?? 0) + 1);
         $clean['updated_at'] = gmdate('c');
-
         $history = get_option(self::REVISIONS, []);
         if (!is_array($history)) $history = [];
         array_unshift($history, [
@@ -1428,14 +1599,15 @@ final class ARK_App_Designer {
         update_option(self::REVISIONS, array_slice($history, 0, 20), false);
         update_option(self::PUBLISHED, $clean, false);
         update_option(self::DRAFT, $clean, false);
+        $published = get_option(self::PUBLISHED, []);
+        if (!is_array($published) || !is_array($published['pages'] ?? null)) {
+            return new WP_Error('ark_designer_publish_readback_failed', 'Published configuration could not be verified after saving.', ['status' => 500]);
+        }
         return rest_ensure_response([
             'success' => true,
-            'version' => $clean['version'],
-            'updated_at' => $clean['updated_at'],
-            // Return the exact server-sanitized document so the native Designer
-            // can verify that every navigation item, link, icon and colour
-            // survived publication before reporting success.
-            'published_config' => $clean,
+            'version' => $published['version'] ?? $clean['version'],
+            'updated_at' => $published['updated_at'] ?? $clean['updated_at'],
+            'published_config' => $published,
         ]);
     }
 
@@ -1600,7 +1772,7 @@ final class ARK_App_Designer {
         echo '<div class="wrap ark-designer-wrap"><div class="ark-designer-app">';
         echo '<header class="ark-topbar"><div class="ark-brand"><span class="ark-brand-mark">A</span><div><strong>ARK App Designer</strong><small>Visual studio for GlowHit</small></div></div>';
         echo '<div class="ark-top-actions"><span class="ark-status"><i></i> Connected to WordPress</span><button class="ark-btn ark-btn-ghost" id="ark-save-draft">Save draft</button><button class="ark-btn ark-btn-publish" id="ark-publish">Publish changes ↗</button></div></header>';
-        echo '<div class="ark-release-stamp" data-ark-designer-version="1.17.2" data-ark-source-revision="1.17.2"><strong>ARK App Designer 1.17.2</strong><span>Layout Studio</span></div>';
+        echo '<div class="ark-release-stamp" data-ark-designer-version="' . esc_attr(self::VERSION) . '" data-ark-source-revision="' . esc_attr(self::VERSION) . '"><strong>ARK App Designer ' . esc_html(self::VERSION) . '</strong><span>Layout Studio</span></div>';
         echo '<main class="ark-workspace"><aside class="ark-sidebar"><button type="button" class="ark-panel-toggle" id="ark-toggle-left" aria-label="Collapse components panel">☰ Components</button><div class="ark-sidebar-title">BUILD YOUR APP</div><div class="ark-page-list" id="ark-pages"></div><div class="ark-sidebar-divider"></div><button type="button" class="ark-quick-link" data-view="default_heading">▤ Default heading bar</button><button type="button" class="ark-quick-link" id="ark-add-page">＋ Add New Page</button><button type="button" class="ark-quick-link" id="ark-page-settings" data-view="page_settings" style="display:none">⚙ Page Settings</button><div class="ark-sidebar-divider"></div><div class="ark-sidebar-title">ADD COMPONENT</div><div class="ark-component-list" id="ark-components"></div><div class="ark-sidebar-divider"></div><button class="ark-quick-link" data-view="app">✎ App name & identity</button><button class="ark-quick-link" data-view="theme">◈ Theme & colours</button><button class="ark-quick-link" data-view="celebration">✧ Crackers animation</button><button class="ark-quick-link" data-view="loading">◌ Loading animation</button><button class="ark-quick-link" data-view="navigation">☷ Navigation</button><button class="ark-quick-link" data-view="icon_visibility">◉ Icon visibility</button><button class="ark-quick-link" data-view="source">⌘ App source files</button></aside>';
         echo '<section class="ark-canvas-area"><div class="ark-canvas-toolbar"><div><strong id="ark-canvas-title">Home page</strong><span id="ark-canvas-subtitle">Drag sections or use the arrows to change order</span></div><div class="ark-canvas-tools"><span class="ark-live-pill">● LIVE PREVIEW</span><button class="ark-icon-btn" id="ark-preview-refresh" title="Refresh preview">↻</button></div></div>';
         echo '<div class="ark-canvas-scroll"><div class="ark-phone"><div class="ark-phone-status"><span>9:41</span><span>● ● ▰</span></div><div class="ark-phone-screen" id="ark-preview"></div><div class="ark-phone-nav"><span>⌂</span><span>▦</span><span>♡</span><span>♙</span></div></div></div></section>';
