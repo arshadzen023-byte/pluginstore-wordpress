@@ -29,6 +29,8 @@ jobs:
           node-version: '20'
       - name: Validate PHP syntax
         run: php -l wp-content/plugins/ark-app-designer/ark-app-designer.php
+      - name: Validate native App Bar and floating action JSON contract
+        run: php wp-content/plugins/ark-app-designer/tests/app-bar-config-test.php
       - name: Validate ARK Native App Builder PHP syntax
         run: php -l wp-content/plugins/ark-native-app-builder/ark-native-app-builder.php && php -l wp-content/plugins/ark-native-app-builder/includes/class-ark-nab.php
       - name: Validate Native API Bridge PHP syntax
@@ -43,15 +45,16 @@ jobs:
         run: |
           mkdir -p dist
           cd wp-content/plugins
-          zip -r ../../dist/ark-app-designer-1.17.4.zip ark-app-designer
+          zip -r ../../dist/ark-app-designer-1.17.8.zip ark-app-designer
           zip -r ../../dist/ark-native-app-builder-0.2.0.zip ark-native-app-builder
           zip -r ../../dist/ark-woo-product-promo-slider-1.1.2.zip ark-woo-product-promo-slider
       - name: Publish installable ZIP downloads
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           mkdir -p /tmp/ark-plugin-downloads
-          cp dist/ark-app-designer-1.17.4.zip /tmp/ark-plugin-downloads/
+          cp dist/ark-app-designer-1.17.8.zip /tmp/ark-plugin-downloads/
           cp dist/ark-native-app-builder-0.2.0.zip /tmp/ark-plugin-downloads/
           cp dist/ark-woo-product-promo-slider-1.1.2.zip /tmp/ark-plugin-downloads/
           git config user.name "github-actions[bot]"
@@ -64,7 +67,7 @@ jobs:
           fi
           git rm -rf . >/dev/null 2>&1 || true
           cp /tmp/ark-plugin-downloads/*.zip .
-          git add ark-app-designer-1.17.4.zip ark-native-app-builder-0.2.0.zip ark-woo-product-promo-slider-1.1.2.zip
+          git add ark-app-designer-1.17.8.zip ark-native-app-builder-0.2.0.zip ark-woo-product-promo-slider-1.1.2.zip
           git commit -m "Publish installable WordPress plugin ZIPs"
           git push https://x-access-token:$GITHUB_TOKEN@github.com/$GITHUB_REPOSITORY.git HEAD:plugin-downloads --force
 
@@ -72,9 +75,9 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: ark-native-wordpress-plugins-1.17.4
+          name: ark-native-wordpress-plugins-1.17.8
           path: |
-            dist/ark-app-designer-1.17.4.zip
+            dist/ark-app-designer-1.17.8.zip
             dist/ark-native-app-builder-0.2.0.zip
             dist/ark-woo-product-promo-slider-1.1.2.zip
           retention-days: 30
