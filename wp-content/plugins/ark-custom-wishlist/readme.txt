@@ -1,1 +1,0 @@
-ARK Custom Wishlist hotfix. Fixes missing summary_button callback and prevents duplicate product-page wishlist buttons. Backup before replacing existing plugin. Requires WooCommerce.
