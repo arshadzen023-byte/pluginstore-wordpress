@@ -1,6 +1,6 @@
 # ARK App Designer WordPress Plugin
 
-**Plugin:** ARK App Designer 1.17.8  
+**Plugin:** ARK App Designer 1.18.0  
 **GlowHit app engine:** 1.0.41 (build 41)  
 **Companion app:** ARK Studio 1.0.0
 
@@ -11,11 +11,15 @@
 
 ARK App Designer controls supported Flutter app layouts and splash configuration from WordPress. Install it as a separate plugin next to WooCommerce and the ARK App Push Notifications plugin.
 
-## 1.17.8 Native App Bar Builder
+## 1.18.0 Native App Bar Builder
 - Adds twelve ready-made App Bar presets (Amazon, Flipkart, Myntra, Meesho and additional compact, premium, location-first, gradient and custom layouts).
 - Persists menu, logo, cart, voice search, search, wishlist, refresh and address/location visibility, per-page visibility, icon family/icon choices, background colour/image/GIF, dimensions, spacing, radius and position.
 - Supports up to ten custom App Bar actions with their own icon and app-page, website or deep-link destination.
-- Sanitizes uploaded media URLs, GIF/image MIME types, icon families, page visibility and custom destinations before publish; native Designer verifies the canonical published JSON.
+- Stores WordPress Media Library attachment IDs with canonical URLs for the App Bar background and Menu Top Image, so selection survives save, publish and app restart.
+- Extends the background behind Android's Status Bar while preserving animated GIF playback and safe-area tap targets; exposes status-bar icon brightness and delivery-address text colour.
+- Adds default menu entries and per-item `admin_only` access. ARK Designer visibility is backed by the WordPress `manage_options` capability, not a client-side flag.
+- Adds the administrator-only 294-name searchable icon catalogue at `/studio/icons` and the bearer-token bridge route `/ark-native/v1/designer/icons`.
+- Sanitizes image/GIF MIME types, attachment IDs, icon families, page visibility and custom destinations before publish; native Designer verifies the canonical published JSON.
 
 ## 1.17.7 Per-page Floating Action Button settings
 - Keeps one independent action button per built-in or custom app page, with enable/disable, icon family/icon, colours, size, offsets, destination page, website URL or app deep link.

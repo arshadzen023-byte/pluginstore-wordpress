@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK App Designer
  * Description: Server-driven visual app designer for ARK Native / GlowHit Flutter apps, including live layout, navigation, theme and in-app splash configuration.
- * Version: 1.17.8
+ * Version: 1.18.0
  * Author: ARK
  * Requires PHP: 7.4
  */
@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class ARK_App_Designer {
-    const VERSION = '1.17.8';
+    const VERSION = '1.18.0';
     const PUBLISHED = 'ark_app_designer_published';
     const DRAFT = 'ark_app_designer_draft';
     const REVISIONS = 'ark_app_designer_revisions';
@@ -127,7 +127,19 @@ final class ARK_App_Designer {
             'app_bar' => [
                 'version' => 1, 'enabled' => true, 'preset' => 'custom',
                 'background_color' => '#FFFFFF', 'foreground_color' => '#202124',
-                'background_image_url' => '', 'background_mime_type' => '', 'logo_url' => '',
+                'background_image_url' => '', 'background_image_id' => 0, 'background_mime_type' => '', 'logo_url' => '',
+                'menu_header_image_url' => '', 'menu_header_image_id' => 0,
+                'menu_items' => [
+                    ['id'=>'home','title'=>'Home','link_type'=>'page','link_value'=>'home','leading_icon_family'=>'Material','leading_icon'=>'home_outlined','leading_icon_style'=>'plain','trailing_icon_family'=>'Material','trailing_icon'=>'','visible'=>true,'admin_only'=>false],
+                    ['id'=>'categories','title'=>'Categories','link_type'=>'page','link_value'=>'categories','leading_icon_family'=>'Material','leading_icon'=>'grid_view','leading_icon_style'=>'plain','trailing_icon_family'=>'Material','trailing_icon'=>'','visible'=>true,'admin_only'=>false],
+                    ['id'=>'wishlist','title'=>'Wishlist','link_type'=>'page','link_value'=>'wishlist','leading_icon_family'=>'Material','leading_icon'=>'favorite_border','leading_icon_style'=>'plain','trailing_icon_family'=>'Material','trailing_icon'=>'','visible'=>true,'admin_only'=>false],
+                    ['id'=>'cart','title'=>'Cart','link_type'=>'page','link_value'=>'cart','leading_icon_family'=>'Material','leading_icon'=>'shopping_cart_outlined','leading_icon_style'=>'plain','trailing_icon_family'=>'Material','trailing_icon'=>'','visible'=>true,'admin_only'=>false],
+                    ['id'=>'account','title'=>'Account','link_type'=>'page','link_value'=>'account','leading_icon_family'=>'Material','leading_icon'=>'person_outline','leading_icon_style'=>'plain','trailing_icon_family'=>'Material','trailing_icon'=>'','visible'=>true,'admin_only'=>false],
+                    ['id'=>'ark-designer','title'=>'ARK Designer','link_type'=>'deep_link','link_value'=>'ark_designer','leading_icon_family'=>'Material','leading_icon'=>'design_services','leading_icon_style'=>'plain','trailing_icon_family'=>'Material','trailing_icon'=>'chevron_right','visible'=>true,'admin_only'=>true],
+                ],
+                'address_text_color' => '#202124', 'extend_under_status_bar' => true,
+                'status_bar_background' => '#FFFFFF', 'status_bar_icon_brightness' => 'dark',
+                'icon_size' => 22, 'horizontal_padding' => 10, 'left_padding' => 10, 'right_padding' => 10,
                 'height' => 72, 'spacing' => 8, 'radius' => 12, 'position' => 'top',
                 'show_menu' => true, 'show_logo' => true, 'show_cart' => true,
                 'show_voice_search' => true, 'show_search' => true, 'show_wishlist' => true,
@@ -758,6 +770,11 @@ final class ARK_App_Designer {
             'callback' => [$this, 'api_studio_media'],
             'permission_callback' => [$this, 'can_design'],
         ]);
+        register_rest_route(self::REST_NAMESPACE, '/studio/icons', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [$this, 'api_studio_icons'],
+            'permission_callback' => [$this, 'can_design'],
+        ]);
         register_rest_route(self::REST_NAMESPACE, '/studio/github/tree', [
             'methods' => WP_REST_Server::READABLE,
             'callback' => [$this, 'api_github_tree'],
@@ -1015,9 +1032,15 @@ final class ARK_App_Designer {
         $splash = is_array($clean['splash'] ?? null) ? $clean['splash'] : [];
         $splash['enabled'] = !empty($splash['enabled']);
         $splash['image_url'] = $this->clean_url($splash['image_url'] ?? '');
-        $splash['duration_ms'] = min(8000, max(500, absint($splash['duration_ms'] ?? 1800)));
+        $splash['attachment_id'] = absint($splash['attachment_id'] ?? 0);
+        $attachment_url = $splash['attachment_id'] && function_exists('wp_attachment_is_image') && wp_attachment_is_image($splash['attachment_id'])
+            ? wp_get_attachment_url($splash['attachment_id']) : '';
+        if ($attachment_url) $splash['image_url'] = $this->clean_url($attachment_url);
+        $splash['duration_ms'] = min(15000, max(1000, absint($splash['duration_ms'] ?? 3000)));
         $splash['fit'] = in_array(($splash['fit'] ?? 'contain'), ['contain','cover','fill'], true) ? $splash['fit'] : 'contain';
-        $splash['background'] = sanitize_hex_color($splash['background'] ?? '') ?: $base['splash']['background']; 
+        $splash['image_scale'] = min(2.0, max(0.25, (float) ($splash['image_scale'] ?? 1)));
+        $splash['background'] = sanitize_hex_color($splash['background'] ?? '') ?: $base['splash']['background'];
+        $splash['enabled'] = !empty($splash['enabled']) && $splash['image_url'] !== ''; 
         unset($splash['logo_url'], $splash['title'], $splash['subtitle'], $splash['animation']);
         $clean['splash'] = $splash;
         $loading = is_array($clean['loading'] ?? null) ? self::merge_config_defaults($base['loading'], $clean['loading']) : $base['loading'];
@@ -1443,11 +1466,24 @@ final class ARK_App_Designer {
         foreach (['background_color'=>'#FFFFFF','foreground_color'=>'#202124'] as $key => $fallback) {
             $app_bar[$key] = sanitize_hex_color($app_bar[$key] ?? '') ?: $fallback;
         }
-        $app_bar['background_image_url'] = $this->clean_url($app_bar['background_image_url'] ?? '');
+        $app_bar['background_image_id'] = absint($app_bar['background_image_id'] ?? 0);
+        $background_attachment_url = $app_bar['background_image_id'] && function_exists('wp_attachment_is_image') && wp_attachment_is_image($app_bar['background_image_id']) ? wp_get_attachment_url($app_bar['background_image_id']) : '';
+        $app_bar['background_image_url'] = $this->clean_url($background_attachment_url ?: ($app_bar['background_image_url'] ?? ''));
+        $app_bar['menu_header_image_id'] = absint($app_bar['menu_header_image_id'] ?? 0);
+        $menu_attachment_url = $app_bar['menu_header_image_id'] && function_exists('wp_attachment_is_image') && wp_attachment_is_image($app_bar['menu_header_image_id']) ? wp_get_attachment_url($app_bar['menu_header_image_id']) : '';
+        $app_bar['menu_header_image_url'] = $this->clean_url($menu_attachment_url ?: ($app_bar['menu_header_image_url'] ?? ''));
         $app_bar['logo_url'] = $this->clean_url($app_bar['logo_url'] ?? '');
+        $app_bar['address_text_color'] = sanitize_hex_color($app_bar['address_text_color'] ?? '') ?: '#202124';
+        $app_bar['extend_under_status_bar'] = !array_key_exists('extend_under_status_bar', $app_bar) || (bool) $app_bar['extend_under_status_bar'];
+        $app_bar['status_bar_background'] = sanitize_hex_color($app_bar['status_bar_background'] ?? '') ?: $app_bar['background_color'];
+        $app_bar['status_bar_icon_brightness'] = in_array(($app_bar['status_bar_icon_brightness'] ?? 'dark'), ['dark','light'], true) ? ($app_bar['status_bar_icon_brightness'] ?? 'dark') : 'dark';
+        $app_bar['icon_size'] = min(36, max(16, (float) ($app_bar['icon_size'] ?? 22)));
+        $app_bar['horizontal_padding'] = min(24, max(0, (float) ($app_bar['horizontal_padding'] ?? 10)));
+        $app_bar['left_padding'] = min(24, max(0, (float) ($app_bar['left_padding'] ?? $app_bar['horizontal_padding'])));
+        $app_bar['right_padding'] = min(24, max(0, (float) ($app_bar['right_padding'] ?? $app_bar['horizontal_padding'])));
         $mime = sanitize_mime_type($app_bar['background_mime_type'] ?? '');
         $app_bar['background_mime_type'] = in_array($mime, ['image/gif','image/jpeg','image/png','image/webp'], true) ? $mime : '';
-        $app_bar['height'] = min(160, max(48, (float) ($app_bar['height'] ?? 72)));
+        $app_bar['height'] = min(220, max(48, (float) ($app_bar['height'] ?? 72)));
         $app_bar['spacing'] = min(32, max(0, (float) ($app_bar['spacing'] ?? 8)));
         $app_bar['radius'] = min(36, max(0, (float) ($app_bar['radius'] ?? 12)));
         $app_bar['position'] = in_array(($app_bar['position'] ?? 'top'), ['top','floating','overlay'], true) ? ($app_bar['position'] ?? 'top') : 'top';
@@ -1467,6 +1503,32 @@ final class ARK_App_Designer {
         foreach ($known_pages as $page_key) {
             $app_bar['visible_pages'][$page_key] = !array_key_exists($page_key, $visibility) || (bool) $visibility[$page_key];
         }
+        $menu_items_input = $app_bar['menu_items'] ?? ($base['app_bar']['menu_items'] ?? []);
+        if (!is_array($menu_items_input) || !$menu_items_input) $menu_items_input = $base['app_bar']['menu_items'] ?? [];
+        $app_bar['menu_items'] = array_values(array_map(function($item) use ($allowed_icon_families, $known_pages) {
+            $item['id'] = sanitize_text_field($item['id'] ?? wp_generate_uuid4());
+            $item['title'] = sanitize_text_field($item['title'] ?? 'Menu item');
+            $item['link_type'] = in_array(($item['link_type'] ?? 'page'), ['page','url','deep_link'], true) ? ($item['link_type'] ?? 'page') : 'page';
+            $target = trim((string) ($item['link_value'] ?? 'home'));
+            if ($item['link_type'] === 'url') {
+                $item['link_value'] = $target !== '' ? $this->clean_url($target) : '';
+            } elseif ($item['link_type'] === 'page') {
+                $page = sanitize_key(preg_replace('/^page:/i', '', $target));
+                $item['link_value'] = in_array($page, $known_pages, true) ? $page : 'home';
+            } else {
+                $item['link_value'] = sanitize_text_field($target);
+            }
+            foreach (['leading_icon','trailing_icon'] as $icon_field) {
+                $family_field = $icon_field . '_family';
+                $family = sanitize_text_field($item[$family_field] ?? 'Material');
+                $item[$family_field] = in_array($family, $allowed_icon_families, true) ? $family : 'Material';
+                $item[$icon_field] = sanitize_text_field($item[$icon_field] ?? ($icon_field === 'leading_icon' ? 'home_outlined' : 'chevron_right'));
+            }
+            $item['leading_icon_style'] = in_array(($item['leading_icon_style'] ?? 'plain'), ['plain','circle','tile'], true) ? ($item['leading_icon_style'] ?? 'plain') : 'plain';
+            $item['visible'] = !array_key_exists('visible', $item) || (bool) $item['visible'];
+            $item['admin_only'] = !empty($item['admin_only']);
+            return $item;
+        }, array_slice(array_filter((array) $menu_items_input, 'is_array'), 0, 30)));
         $app_bar['actions'] = array_values(array_map(function($action) use ($allowed_icon_families, $known_pages) {
             if (!is_array($action)) return null;
             $action['id'] = sanitize_text_field($action['id'] ?? wp_generate_uuid4());
@@ -1536,6 +1598,12 @@ final class ARK_App_Designer {
      * Return paginated image/video attachments from the real WordPress Media Library
      * for the native Designer. The endpoint is administrator-only.
      */
+    /** Administrator-only native icon catalogue used by the searchable Flutter picker. */
+    public function api_studio_icons($request) {
+        $icons = ['home', 'home_outlined', 'grid_view', 'apps', 'dashboard', 'favorite', 'favorite_border', 'shopping_cart', 'shopping_cart_outlined', 'cart', 'person', 'person_outline', 'account_circle', 'manage_accounts', 'notifications', 'notifications_none', 'search', 'mic', 'mic_none', 'camera_alt', 'photo_camera', 'image', 'collections', 'menu', 'more_vert', 'more_horiz', 'close', 'arrow_back', 'arrow_forward', 'chevron_left', 'chevron_right', 'expand_more', 'expand_less', 'refresh', 'settings', 'tune', 'filter_list', 'sort', 'share', 'share_outlined', 'edit', 'delete', 'delete_outline', 'add', 'remove', 'check', 'done', 'clear', 'star', 'star_border', 'star_outline', 'location_on', 'location_on_outlined', 'my_location', 'map', 'near_me', 'place', 'flight', 'flight_takeoff', 'flight_land', 'train', 'directions_railway', 'directions_bus', 'directions_car', 'two_wheeler', 'motorcycle', 'bike_scooter', 'water_drop', 'water', 'local_drink', 'home_work', 'apartment', 'house', 'hotel', 'bed', 'chair', 'weekend', 'light', 'lightbulb', 'electrical_services', 'power', 'battery_full', 'battery_charging_full', 'charging_station', 'phone_android', 'smartphone', 'laptop', 'computer', 'tablet', 'watch', 'headphones', 'speaker', 'tv', 'videogame_asset', 'sports_esports', 'music_note', 'music_video', 'library_music', 'play_arrow', 'pause', 'stop', 'volume_up', 'volume_off', 'youtube_searched_for', 'language', 'public', 'web', 'link', 'open_in_new', 'payments', 'payment', 'currency_rupee', 'account_balance_wallet', 'credit_card', 'qr_code', 'qr_code_scanner', 'receipt', 'receipt_long', 'shopping_bag', 'store', 'storefront', 'local_offer', 'sell', 'redeem', 'card_giftcard', 'discount', 'percent', 'inventory', 'inventory_2', 'package_2', 'local_shipping', 'delivery_dining', 'shopping_basket', 'fact_check', 'assignment', 'description', 'article', 'menu_book', 'book', 'school', 'work', 'business', 'business_center', 'support_agent', 'help', 'help_outline', 'info', 'info_outline', 'contact_support', 'call', 'call_outlined', 'phone', 'email', 'mail_outline', 'chat', 'chat_bubble_outline', 'message', 'sms', 'whatsapp', 'telegram', 'facebook', 'instagram', 'camera', 'videocam', 'movie', 'theaters', 'event', 'calendar_month', 'schedule', 'access_time', 'alarm', 'timer', 'history', 'hourglass_empty', 'cloud', 'cloud_upload', 'cloud_download', 'download', 'upload', 'file_upload', 'folder', 'folder_open', 'attach_file', 'attachment', 'picture_as_pdf', 'music_file', 'graphic_eq', 'equalizer', 'mic_external_on', 'translate', 'record_voice_over', 'keyboard_voice', 'travel_explore', 'explore', 'compass_calibration', 'route', 'directions', 'navigation', 'traffic', 'local_gas_station', 'ev_station', 'car_repair', 'build', 'construction', 'handyman', 'cleaning_services', 'medical_services', 'health_and_safety', 'fitness_center', 'restaurant', 'local_cafe', 'fastfood', 'cake', 'pets', 'paw', 'eco', 'park', 'forest', 'sunny', 'nightlight', 'dark_mode', 'light_mode', 'palette', 'brush', 'format_paint', 'design_services', 'draw', 'crop', 'aspect_ratio', 'layers', 'widgets', 'view_quilt', 'view_carousel', 'view_list', 'view_module', 'list', 'checklist', 'bookmark', 'bookmark_border', 'flag', 'verified', 'verified_user', 'security', 'lock', 'lock_open', 'visibility', 'visibility_off', 'shield', 'key', 'logout', 'login', 'person_add', 'group', 'groups', 'support', 'rocket_launch', 'celebration', 'auto_awesome', 'animation', 'gif', 'motion_photos_on', 'flash_on', 'flash_off', 'bolt', 'electric_bolt', 'wifi', 'bluetooth', 'nfc', 'usb', 'router', 'settings_voice', 'settings_suggest', 'manage_search', 'search_off', 'filter_alt', 'price_check', 'trending_up', 'trending_down', 'analytics', 'bar_chart', 'pie_chart', 'show_chart', 'query_stats', 'calculate', 'functions', 'table_chart', 'cloud_sync', 'sync', 'sync_alt', 'cached', 'published_with_changes', 'save', 'save_alt', 'publish'];
+        return rest_ensure_response(['version'=>1, 'total'=>count($icons), 'icons'=>$icons]);
+    }
+
     public function api_studio_media($request) {
         $page = max(1, absint($request->get_param('page')));
         $per_page = min(60, max(1, absint($request->get_param('per_page') ?: 30)));

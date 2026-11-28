@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ARK GlowHit Native Commerce Bridge
  * Description: Unified secure native commerce API for GlowHit Flutter: customer auth, addresses, orders, wishlist, payment configuration and UPI proof submission.
- * Version: 2.2.4
+ * Version: 2.2.5
  * Author: ARK
  * Requires PHP: 8.0
  * Requires Plugins: woocommerce
@@ -162,6 +162,11 @@ final class ARK_Native_API_Bridge {
                 'permission_callback' => [$this, 'authorize_admin'],
             ],
         ]);
+        register_rest_route(self::NS, '/designer/icons', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [$this, 'designer_icons'],
+            'permission_callback' => [$this, 'authorize_admin'],
+        ]);
         register_rest_route(self::NS, '/designer/media', [
             [
                 'methods' => WP_REST_Server::READABLE,
@@ -181,7 +186,7 @@ final class ARK_Native_API_Bridge {
         return rest_ensure_response([
             'success' => true,
             'plugin' => 'ARK GlowHit Native Commerce Bridge',
-            'version' => '2.2.4',
+            'version' => '2.2.5',
             'woocommerce_active' => (bool) $woocommerce_active,
             'currency' => function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : '',
             'routes' => [
@@ -293,6 +298,15 @@ final class ARK_Native_API_Bridge {
         $inner->set_body(wp_json_encode($body['config']));
         $publish = ($body['status'] ?? 'draft') === 'published';
         return $publish ? $designer->api_publish($inner) : $designer->api_save_draft($inner);
+    }
+
+    public function designer_icons($request) {
+        $designer = $this->designer_instance();
+        if (is_wp_error($designer)) return $designer;
+        if (!method_exists($designer, 'api_studio_icons')) {
+            return new WP_Error('ark_designer_icons_unavailable', 'Update ARK App Designer to version 1.18.0 or newer to load the searchable icon catalogue.', ['status' => 503]);
+        }
+        return $designer->api_studio_icons($request);
     }
 
     public function designer_media($request) {

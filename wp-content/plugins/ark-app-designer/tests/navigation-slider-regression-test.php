@@ -8,7 +8,7 @@ $checks = [
     'normal and active icon fields are retained' => strpos($source, "['icon','active_icon']") !== false,
     'legacy source_url and nested media are accepted' => strpos($source, "'source_url','src','url','original_url','full_url'") !== false && strpos($source, "['image','media','attachment','file','data']") !== false,
     'empty media source cannot mask non-empty children' => strpos($source, "['items','slides','images','children']") !== false,
-    'canonical published config is returned' => strpos($source, "'published_config' => $published") !== false,
+    'canonical published config is returned' => strpos($source, "'published_config' => \$published") !== false,
 ];
 $failed = [];
 foreach ($checks as $label => $passed) if (!$passed) $failed[] = $label;

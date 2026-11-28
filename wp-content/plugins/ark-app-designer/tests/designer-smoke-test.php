@@ -4,8 +4,8 @@ $php = file_get_contents($root . '/ark-app-designer.php');
 $js = file_get_contents($root . '/assets/admin.js');
 $css = file_get_contents($root . '/assets/admin.css');
 $checks = [
-  'plugin header version' => strpos($php, '* Version: 1.17.8') !== false,
-  'plugin class version' => strpos($php, "const VERSION = '1.17.8'") !== false,
+  'plugin header version' => strpos($php, '* Version: 1.18.0') !== false,
+  'plugin class version' => strpos($php, "const VERSION = '1.18.0'") !== false,
   'recursive media sanitizer preserves deep Designer payloads' => strpos($php, 'if ($depth > 16) return') !== false,
   'SQL slider persistence tables remain present' => strpos($php, 'ark_live_sliders') !== false && strpos($php, 'ark_live_slider_items') !== false,
   'multi-image Media Library selector remains present' => strpos($js, 'multiple:true,library:{type:') !== false,
@@ -22,8 +22,10 @@ $checks = [
   'Banner spacing maps from main axis spacing' => strpos($php, 'main_axis_spacing') !== false,
   'Banner radius maps from corner radius' => strpos($php, 'corner_radius') !== false,
   'aspect ratio accepts native Designer range' => strpos($php, 'min(3.0, max(0.4') !== false,
-  'Media Library REST route is registered and paginated' => strpos($php, "'/studio/media'") !== false && strpos($php, "'posts_per_page' => $per_page") !== false && strpos($php, "'paged' => $page") !== false,
+  'Media Library REST route is registered and paginated' => strpos($php, "'/studio/media'") !== false && strpos($php, "'posts_per_page' => \$per_page") !== false && strpos($php, "'paged' => \$page") !== false,
   'App Bar defaults and sanitization are additive' => strpos($php, "'app_bar' => [") !== false && strpos($php, "app_bar'] = ") !== false,
+  'App Bar attachment IDs and address/status bar fields persist' => strpos($php, "'menu_header_image_id'") !== false && strpos($php, "'background_image_id'") !== false && strpos($php, "'address_text_color'") !== false && strpos($php, "'extend_under_status_bar'") !== false,
+  'Menu sanitizer retains per-item admin_only access' => strpos($php, "\$item['admin_only'] = !empty(\$item['admin_only'])") !== false,
   'editor source remains readable' => strlen($js) > 50000,
   'editor CSS remains readable' => strlen($css) > 1000,
 ];
