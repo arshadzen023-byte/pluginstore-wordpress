@@ -1032,9 +1032,15 @@ final class ARK_App_Designer {
         $splash = is_array($clean['splash'] ?? null) ? $clean['splash'] : [];
         $splash['enabled'] = !empty($splash['enabled']);
         $splash['image_url'] = $this->clean_url($splash['image_url'] ?? '');
-        $splash['duration_ms'] = min(8000, max(500, absint($splash['duration_ms'] ?? 1800)));
+        $splash['attachment_id'] = absint($splash['attachment_id'] ?? 0);
+        $attachment_url = $splash['attachment_id'] && function_exists('wp_attachment_is_image') && wp_attachment_is_image($splash['attachment_id'])
+            ? wp_get_attachment_url($splash['attachment_id']) : '';
+        if ($attachment_url) $splash['image_url'] = $this->clean_url($attachment_url);
+        $splash['duration_ms'] = min(15000, max(1000, absint($splash['duration_ms'] ?? 3000)));
         $splash['fit'] = in_array(($splash['fit'] ?? 'contain'), ['contain','cover','fill'], true) ? $splash['fit'] : 'contain';
-        $splash['background'] = sanitize_hex_color($splash['background'] ?? '') ?: $base['splash']['background']; 
+        $splash['image_scale'] = min(2.0, max(0.25, (float) ($splash['image_scale'] ?? 1)));
+        $splash['background'] = sanitize_hex_color($splash['background'] ?? '') ?: $base['splash']['background'];
+        $splash['enabled'] = !empty($splash['enabled']) && $splash['image_url'] !== ''; 
         unset($splash['logo_url'], $splash['title'], $splash['subtitle'], $splash['animation']);
         $clean['splash'] = $splash;
         $loading = is_array($clean['loading'] ?? null) ? self::merge_config_defaults($base['loading'], $clean['loading']) : $base['loading'];
